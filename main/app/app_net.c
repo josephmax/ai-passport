@@ -39,31 +39,47 @@ bool app_net_init(void) {
     s_events = xEventGroupCreate();
     if (!s_events) return false;
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    esp_netif_t *sta = esp_netif_create_default_wifi_sta();
+    // 全链路优雅降级:任何一步失败都保持离线运行(设置页可再试配网),
+    // 绝不 abort —— 首刷曾因素材占满堆导致 esp_wifi_init NO_MEM 循环重启。
+    // 事件循环由 app_main 最早创建,这里只做 Wi-Fi 栈自身的降级初始化。
+    esp_err_t err = esp_netif_init();
+    if (err == ESP_OK && !esp_netif_create_default_wifi_sta()) err = ESP_ERR_NO_MEM;
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
-                                               on_ip, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED,
-                                               on_disconnect, NULL));
+    if (err == ESP_OK) err = esp_wifi_init(&cfg);
+    if (err == ESP_OK) err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    if (err == ESP_OK) err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err == ESP_OK) {
+        err = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                         on_ip, NULL);
+    }
+    if (err == ESP_OK) {
+        err = esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED,
+                                         on_disconnect, NULL);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Wi-Fi 栈初始化失败,离线运行: %s", esp_err_to_name(err));
+        return false;
+    }
 
     app_net_cfg_t net;
     if (app_store_net(&net) && net.ssid[0]) {
         wifi_config_t wc = { 0 };
         strlcpy((char *)wc.sta.ssid, net.ssid, sizeof(wc.sta.ssid));
         strlcpy((char *)wc.sta.password, net.password, sizeof(wc.sta.password));
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wc));
-        ESP_ERROR_CHECK(esp_wifi_start());
+        if (esp_wifi_set_config(WIFI_IF_STA, &wc) != ESP_OK ||
+            esp_wifi_start() != ESP_OK) {
+            ESP_LOGW(TAG, "Wi-Fi 启动失败,离线运行");
+            return false;
+        }
         ESP_LOGI(TAG, "Wi-Fi 连接中: %s", net.ssid);
     } else {
         ESP_LOGI(TAG, "无 Wi-Fi 凭证,保持离线(配网见设置页)");
-        ESP_ERROR_CHECK(esp_wifi_start());
+        if (esp_wifi_start() != ESP_OK) {
+            ESP_LOGW(TAG, "Wi-Fi 启动失败,离线运行");
+            return false;
+        }
     }
-    (void)sta;
+
     return true;
 }
 

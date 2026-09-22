@@ -2,6 +2,7 @@
 #pragma once
 
 #include "lvgl.h"
+#include "ui_theme.h"
 
 typedef struct {
     lv_obj_t *screen;
@@ -18,3 +19,6 @@ bool ui_dash_key(bool ok_short, bool ok_long, bool up, bool down);
 void ui_dash_refresh(void);
 
 lv_obj_t *ui_dash_screen(void);
+
+// 本页的页点指示器(Shell 切页时置激活态)。
+ui_page_dots_t *ui_dash_dots(void);

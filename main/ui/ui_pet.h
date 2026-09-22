@@ -2,6 +2,7 @@
 #pragma once
 
 #include "lvgl.h"
+#include "ui_theme.h"
 
 typedef struct {
     lv_obj_t *screen;
@@ -9,6 +10,9 @@ typedef struct {
 
 ui_pet_t *ui_pet_create(void);
 lv_obj_t *ui_pet_screen(void);
+
+// 本页的页点指示器(Shell 切页时置激活态)。
+ui_page_dots_t *ui_pet_dots(void);
 
 // 1Hz 数据刷新(HUD/信息条,幂等)。
 void ui_pet_refresh(void);

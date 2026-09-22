@@ -41,7 +41,14 @@ void ui_theme_status_bar_create(lv_obj_t *parent, ui_status_bar_t *out);
 void ui_theme_status_bar_refresh(ui_status_bar_t *bar);
 
 // 小圆点页面指示器(三个一级页,嵌在状态条行内)。
-void ui_theme_page_dots(lv_obj_t *parent, int active);
+// 每个屏幕各自创建一份(active 归零),切换时只改激活态,避免重入泄漏。
+typedef struct {
+    lv_obj_t *holder;
+    lv_obj_t *dots[3];
+} ui_page_dots_t;
+
+void ui_theme_page_dots_create(lv_obj_t *parent, ui_page_dots_t *out);
+void ui_theme_page_dots_set(ui_page_dots_t *dots, int active);
 
 // 底部按键提示栏:统一样式与高度(y302..320),随场景更新内容;
 // 无功能项传 NULL 不显示,如 ui_theme_hint_set(h,"切页","下钻",NULL)。

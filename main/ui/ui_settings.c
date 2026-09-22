@@ -43,6 +43,7 @@ static lv_obj_t *s_qr;
 static lv_obj_t *s_url_label;
 static lv_obj_t *s_token_label;
 static lv_obj_t *s_hint_label;   // 底部统一按键提示栏
+static ui_page_dots_t s_dots;
 
 static const uint16_t AUTO_OFF_STEPS[] = { 15, 30, 60, 120 };
 
@@ -284,6 +285,7 @@ ui_settings_t *ui_settings_create(void) {
     lv_obj_align(enter_hint, LV_ALIGN_TOP_RIGHT, -12, 34);
     lv_obj_add_flag(enter_hint, LV_OBJ_FLAG_HIDDEN);   // 由底部提示栏统一承担
     s_hint_label = ui_theme_hint_create(scr);
+    ui_theme_page_dots_create(scr, &s_dots);
 
     static const char *NAMES[ITEM_COUNT] = {
         "亮度", "音量", "自动息屏", "作息时间", "Wi-Fi 配网", "连接手机", "立即同步",
@@ -352,4 +354,8 @@ ui_settings_t *ui_settings_create(void) {
 
 lv_obj_t *ui_settings_screen(void) {
     return s_settings ? s_settings->screen : NULL;
+}
+
+ui_page_dots_t *ui_settings_dots(void) {
+    return &s_dots;
 }

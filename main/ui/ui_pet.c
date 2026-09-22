@@ -33,6 +33,7 @@ typedef enum { ACT_RUN = 0, ACT_FIGHT, ACT_SLEEP, ACT_VICTORY, ACT_NONE } act_t;
 static ui_pet_t *s_pet;
 static ui_status_bar_t s_status;
 static lv_obj_t *s_hint;
+static ui_page_dots_t s_dots;
 
 // 地图:单份数据,两个 image 拼接循环。
 static app_asset_frames_t s_map;
@@ -393,6 +394,7 @@ ui_pet_t *ui_pet_create(void) {
     lv_obj_align(s_info_bar, LV_ALIGN_BOTTOM_MID, 0, -26);
     s_hint = ui_theme_hint_create(scr);
     ui_theme_hint_set(s_hint, "切页", "番茄", "取消");
+    ui_theme_page_dots_create(scr, &s_dots);
 
     ui_pet_refresh();
     s_timer = lv_timer_create(tick, TICK_MS, NULL);
@@ -401,4 +403,8 @@ ui_pet_t *ui_pet_create(void) {
 
 lv_obj_t *ui_pet_screen(void) {
     return s_pet ? s_pet->screen : NULL;
+}
+
+ui_page_dots_t *ui_pet_dots(void) {
+    return &s_dots;
 }

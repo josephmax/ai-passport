@@ -92,28 +92,31 @@ void ui_theme_status_bar_refresh(ui_status_bar_t *bar) {
     }
 }
 
-void ui_theme_page_dots(lv_obj_t *parent, int active) {    static lv_obj_t *dots[3];
-    static lv_obj_t *holder;
-    if (!holder || lv_obj_get_parent(holder) != parent) {
-        holder = lv_obj_create(parent);
-        lv_obj_set_pos(holder, 96, 7);
-        lv_obj_set_size(holder, 48, 12);
-        lv_obj_set_style_bg_opa(holder, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(holder, 0, 0);
-        lv_obj_set_style_pad_all(holder, 0, 0);
-        lv_obj_set_flex_flow(holder, LV_FLEX_FLOW_ROW);
-        lv_obj_set_style_flex_main_place(holder, LV_FLEX_ALIGN_SPACE_EVENLY, 0);
-        lv_obj_clear_flag(holder, LV_OBJ_FLAG_SCROLLABLE);
-        for (int i = 0; i < 3; i++) {
-            dots[i] = lv_obj_create(holder);
-            lv_obj_set_size(dots[i], 8, 8);
-            lv_obj_set_style_radius(dots[i], LV_RADIUS_CIRCLE, 0);
-            lv_obj_set_style_border_width(dots[i], 0, 0);
-            lv_obj_set_style_bg_opa(dots[i], LV_OPA_COVER, 0);
-        }
-    }
+// 每屏各建一份(静态缓存版会在切页回访时重复创建泄漏)。
+void ui_theme_page_dots_create(lv_obj_t *parent, ui_page_dots_t *out) {
+    out->holder = lv_obj_create(parent);
+    lv_obj_set_pos(out->holder, 96, 7);
+    lv_obj_set_size(out->holder, 48, 12);
+    lv_obj_set_style_bg_opa(out->holder, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(out->holder, 0, 0);
+    lv_obj_set_style_pad_all(out->holder, 0, 0);
+    lv_obj_set_flex_flow(out->holder, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_flex_main_place(out->holder, LV_FLEX_ALIGN_SPACE_EVENLY, 0);
+    lv_obj_clear_flag(out->holder, LV_OBJ_FLAG_SCROLLABLE);
     for (int i = 0; i < 3; i++) {
-        lv_obj_set_style_bg_color(dots[i],
+        out->dots[i] = lv_obj_create(out->holder);
+        lv_obj_set_size(out->dots[i], 8, 8);
+        lv_obj_set_style_radius(out->dots[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(out->dots[i], 0, 0);
+        lv_obj_set_style_bg_opa(out->dots[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(out->dots[i], lv_color_hex(UI_LINE), 0);
+    }
+}
+
+void ui_theme_page_dots_set(ui_page_dots_t *dots, int active) {
+    if (!dots || !dots->holder) return;
+    for (int i = 0; i < 3; i++) {
+        lv_obj_set_style_bg_color(dots->dots[i],
             lv_color_hex(i == active ? UI_ACCENT : UI_LINE), 0);
     }
 }

@@ -79,6 +79,7 @@ static void runtime_restore(void) {
 void app_main(void) {
     ESP_LOGI(TAG, "多合一挂坠启动(wakeup=%d)", (int)esp_sleep_get_wakeup_cause());
 
+    // 事件循环必须先于任何 publish/注册(app_runtime/ui_shell 都依赖)。
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     app_store_init();
     app_service_init();   // 恢复最后已知墙钟(若有)

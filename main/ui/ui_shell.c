@@ -13,6 +13,7 @@
 #include "app_store.h"
 #include "bsp_button.h"
 #include "bsp_display.h"
+#include "esp_heap_caps.h"
 #include "esp_attr.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -59,7 +60,10 @@ static void set_page(page_t page) {
                   : page == PAGE_PET ? ui_pet_screen()
                                      : ui_settings_screen();
     lv_screen_load(scr);
-    ui_theme_page_dots(scr, (int)page);
+    ui_page_dots_t *dots = page == PAGE_DASH ? ui_dash_dots()
+                      : page == PAGE_PET ? ui_pet_dots()
+                                         : ui_settings_dots();
+    ui_theme_page_dots_set(dots, (int)page);
 }
 
 static void refresh_current(void) {
@@ -100,6 +104,10 @@ static void process_input(const input_event_t *in) {
     app_power_notify_activity();
     if (!ok_short && !ok_long && !up && !down) return;
 
+    // 输入任务不是 LVGL 任务:所有触达 LVGL 的页面键处理必须持锁
+    // (仓库硬规则),否则与渲染任务竞态可能损坏 LVGL 池。
+    if (!bsp_lvgl_lock(500)) return;
+
     if (s_page == PAGE_DASH) {
         if (ui_dash_key(ok_short, ok_long, up, down)) return;
     } else if (s_page == PAGE_PET) {
@@ -112,6 +120,7 @@ static void process_input(const input_event_t *in) {
     if (up || down) {
         set_page((page_t)((s_page + (up ? PAGE_COUNT - 1 : 1)) % PAGE_COUNT));
     }
+    bsp_lvgl_unlock();
 }
 
 static void input_task(void *arg) {
@@ -219,4 +228,8 @@ void ui_shell_boot_refresh(void) {
         refresh_current();
         bsp_lvgl_unlock();
     }
+    // 堆水位观测:开机后基线,供真机验收判断内存预算(规格 §11)。
+    ESP_LOGI(TAG, "堆水位: free=%u 最小曾=%u (LVGL池为独立静态区)",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_DEFAULT),
+             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT));
 }

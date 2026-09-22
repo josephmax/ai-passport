@@ -28,6 +28,7 @@ typedef struct {
 static ui_dash_t *s_dash;
 static ui_status_bar_t s_status;
 static lv_obj_t *s_hint;
+static ui_page_dots_t s_dots;
 static card_widgets_t s_cards[DIM_COUNT];
 static lv_obj_t *s_main_view;
 static lv_obj_t *s_drill_view;
@@ -225,6 +226,7 @@ ui_dash_t *ui_dash_create(void) {
 
     ui_theme_status_bar_create(scr, &s_status);
     s_hint = ui_theme_hint_create(scr);
+    ui_theme_page_dots_create(scr, &s_dots);
 
     // 主界面:三卡竖排,各占约 1/3 屏(标题行下方 30..296)。
     s_main_view = lv_obj_create(scr);
@@ -296,4 +298,8 @@ ui_dash_t *ui_dash_create(void) {
 
 lv_obj_t *ui_dash_screen(void) {
     return s_dash ? s_dash->screen : NULL;
+}
+
+ui_page_dots_t *ui_dash_dots(void) {
+    return &s_dots;
 }

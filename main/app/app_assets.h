@@ -10,11 +10,13 @@
 #include <stdint.h>
 
 typedef struct {
-    uint8_t *data;      // 堆缓冲:frames * w * h * 2 字节 RGB565(LE)
+    uint8_t *data;      // 帧数据(LVGL 只读);可能是堆缓冲,也可能直指
+                        // flash 映射区(from_flash=true,禁止 free)
     uint16_t frames;
     uint16_t w;
     uint16_t h;
     uint8_t fps;
+    bool from_flash;
 } app_asset_frames_t;
 
 // 挂载 LittleFS 并确保当前版本素材可用。失败返回 false(UI 用纯色降级)。

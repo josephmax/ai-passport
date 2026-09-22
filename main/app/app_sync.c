@@ -183,7 +183,11 @@ static bool download_bundle(const char *base, int version) {
     if (esp_http_client_get_status_code(h) != 200) goto out;
 
     {
-        chunk_reader_t r = { .h = h, .len = 0, .pos = 0 };
+        // 读取器内嵌 4KB 缓冲,放静态:同步任务栈 6KB 扛不住栈上 4KB。
+        static chunk_reader_t r;
+        r.h = h;
+        r.len = 0;
+        r.pos = 0;
         uint8_t magic[4];
         uint16_t count = 0;
         if (!cr_read(&r, magic, 4) || memcmp(magic, "APB1", 4) != 0) goto out;

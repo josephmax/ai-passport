@@ -99,6 +99,51 @@ static int install_embedded_bundle(void) {
     return version;
 }
 
+// 当前安装版本与固件内嵌版本一致时,素材直接从 flash 映射区读取:
+// 地图条带 76.8K + 动作帧 48K 不再占用宝贵的系统堆(规格 §11 红线,
+// Wi-Fi 需要约 60K 堆,首刷时正是这两块把 esp_wifi_init 挤成了 NO_MEM)。
+// 下载的自定义包(P2)仍走 LittleFS 文件路径。
+static uint16_t s_embedded_version = 0;
+static bool s_use_embedded = false;
+
+static const uint8_t *embedded_file(const char *name, size_t *len) {
+    apb_reader_t r = { pendant_default_bundle_start, pendant_default_bundle_end };
+    uint16_t version = 0, count = 0;
+    if (memcmp(r.p, "APB1", 4) != 0) return NULL;
+    r.p += 4;
+    if (!apb_read_u16(&r, &version) || !apb_read_u16(&r, &count)) return NULL;
+    for (uint16_t i = 0; i < count; i++) {
+        uint16_t name_len = 0;
+        uint32_t data_len = 0;
+        if (!apb_read_u16(&r, &name_len) || name_len > 64) return NULL;
+        char cur[65];
+        if (!apb_read(&r, cur, name_len)) return NULL;
+        cur[name_len] = '\0';
+        if (!apb_read_u32(&r, &data_len)) return NULL;
+        if (strcmp(cur, name) == 0) {
+            *len = data_len;
+            return r.p;
+        }
+        r.p += data_len;
+        if (r.p > r.end) return NULL;
+    }
+    return NULL;
+}
+
+static uint16_t embedded_version(void) {
+    if (s_embedded_version == 0) {
+        apb_reader_t r = { pendant_default_bundle_start, pendant_default_bundle_end };
+        uint16_t version = 0, count = 0;
+        if (memcmp(r.p, "APB1", 4) == 0) {
+            r.p += 4;
+            if (apb_read_u16(&r, &version) && apb_read_u16(&r, &count)) {
+                s_embedded_version = version;
+            }
+        }
+    }
+    return s_embedded_version;
+}
+
 bool app_assets_init(void) {
     esp_vfs_littlefs_conf_t conf = {
         .partition_label = PART_LABEL,
@@ -126,13 +171,16 @@ bool app_assets_init(void) {
     if (installed != app_store_bundle_version()) {
         app_store_save_bundle_version(installed);
     }
+    s_use_embedded = (installed == (int)embedded_version());
+    ESP_LOGI(TAG, "素材通道: %s", s_use_embedded ? "内嵌 flash 直读" : "文件系统");
     return true;
 }
 
 int app_assets_installed_version(void) {
+    if (s_use_embedded) return (int)embedded_version();
     FILE *f = fopen(MOUNT "/bundle/manifest.json", "rb");
     if (!f) return -1;
-    char buf[2048];
+    static char buf[2048];   // 开机主任务一次性路径,同样免栈
     size_t n = fread(buf, 1, sizeof(buf) - 1, f);
     fclose(f);
     buf[n] = '\0';
@@ -150,6 +198,21 @@ static bool load_frames(const char *file, uint16_t frames, uint16_t w, uint16_t 
     memset(out, 0, sizeof(*out));
     if (!file || frames == 0 || w == 0 || h == 0) return false;
     size_t need = (size_t)frames * w * h * 2;
+
+    if (s_use_embedded) {
+        size_t len = 0;
+        const uint8_t *p = embedded_file(file, &len);
+        if (p && len == need) {
+            out->data = (uint8_t *)p;   // flash 映射,只读,免堆
+            out->frames = frames;
+            out->w = w;
+            out->h = h;
+            out->fps = fps;
+            out->from_flash = true;
+            return true;
+        }
+        return false;
+    }
     char path[96];
     snprintf(path, sizeof(path), MOUNT "/bundle/%s", file);
     FILE *f = fopen(path, "rb");
@@ -181,16 +244,31 @@ static bool load_frames(const char *file, uint16_t frames, uint16_t w, uint16_t 
     return true;
 }
 
+// manifest 原文 2KB:必须静态 —— 本函数会被 LVGL 定时任务调到
+// (宠物动作/天气切换),不能在任务栈上放大缓冲。
+static char s_manifest_buf[2048];
+
 static bool manifest_entry(const char *section, const char *name, int index,
                            char *file_out, size_t file_cap,
                            uint16_t *frames, uint16_t *w, uint16_t *h, uint8_t *fps) {
-    FILE *f = fopen(MOUNT "/bundle/manifest.json", "rb");
-    if (!f) return false;
-    char buf[2048];
-    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
-    fclose(f);
-    buf[n] = '\0';
-    cJSON *root = cJSON_ParseWithLength(buf, n);
+    cJSON *root = NULL;
+    if (s_use_embedded) {
+        // 内嵌模式连 manifest 也走 flash 直读,零文件 IO。
+        size_t len = 0;
+        const uint8_t *p = embedded_file("manifest.json", &len);
+        if (p && len < sizeof(s_manifest_buf)) {
+            memcpy(s_manifest_buf, p, len);
+            root = cJSON_ParseWithLength(s_manifest_buf, len);
+        }
+    } else {
+        FILE *f = fopen(MOUNT "/bundle/manifest.json", "rb");
+        if (!f) return false;
+        size_t n = fread(s_manifest_buf, 1, sizeof(s_manifest_buf) - 1, f);
+        fclose(f);
+        s_manifest_buf[n] = '\0';
+        root = cJSON_ParseWithLength(s_manifest_buf, n);
+    }
+    if (!root) return false;
     if (!root) return false;
 
     cJSON *node = cJSON_GetObjectItemCaseSensitive(root, section);
@@ -254,6 +332,6 @@ bool app_assets_load_decoration(int index, app_asset_frames_t *out) {
 }
 
 void app_asset_frames_free(app_asset_frames_t *frames) {
-    free(frames->data);
+    if (!frames->from_flash) free(frames->data);
     memset(frames, 0, sizeof(*frames));
 }
