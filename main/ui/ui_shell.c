@@ -104,10 +104,7 @@ static void pet_ok_short(void) {
         ? app_focus_add_unit(&rt->focus, now)
         : app_focus_start(&rt->focus, now);
     app_store_save_focus(&rt->focus);
-    if (ev == APP_FOCUS_EV_STACK_FULL) {
-        app_audio_fx_play(APP_FX_BEEP);
-        return;
-    }
+    if (ev == APP_FOCUS_EV_STACK_FULL) return;   // 堆满:静默忽略(用户定稿)
     app_runtime_publish(APP_EVENT_FOCUS_CHANGED);
 }
 

@@ -80,7 +80,9 @@ bool app_audio_fx_init(void) {
     (void)bsp_audio_sleep();   // 待机,首次播放再唤醒
     s_queue = xQueueCreate(2, sizeof(app_fx_t));
     if (!s_queue) return false;
-    bool ok = xTaskCreate(fx_task, "audio_fx", 3072, NULL, 4, &s_task) == pdPASS;
+    // codec 唤醒+重开(bsp_audio_wake)的调用链比常驻路径深,3072 不够
+    // (真机现象:首次触发提示音即重启)。
+    bool ok = xTaskCreate(fx_task, "audio_fx", 5120, NULL, 4, &s_task) == pdPASS;
     if (ok) app_debug_register("audio_fx", s_task);
     if (!ok) {
         vQueueDelete(s_queue);

@@ -4,6 +4,7 @@
 // 流程项(作息/连接手机/配网)进入各自界面;长按逐级返回。
 #include "ui_settings.h"
 
+#include "app_audio_fx.h"
 #include "app_prov.h"
 #include "app_runtime.h"
 #include "app_store.h"
@@ -175,7 +176,10 @@ static void adjust_apply(int dir) {
     }
     case ITEM_VOLUME: {
         int v = rt->settings.volume + dir;
-        if (v >= 0 && v <= 5) rt->settings.volume = (uint8_t)v;
+        if (v >= 0 && v <= 5) {
+            rt->settings.volume = (uint8_t)v;
+            app_audio_fx_play(APP_FX_BEEP);   // 音量回馈:一耳朵听出档位
+        }
         break;
     }
     case ITEM_SCREEN_OFF: {

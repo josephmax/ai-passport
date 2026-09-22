@@ -90,6 +90,9 @@ static void fill_dsc(lv_image_dsc_t *dsc, const uint8_t *data,
     dsc->header.h = h;
     dsc->header.stride = w * 2;
     dsc->header.cf = LV_COLOR_FORMAT_RGB565;
+    // data_size 缺失曾让全部图片被 LVGL 判为"零长度"而拒绘
+    // (真机现象:文字/圆点全好,地图与角色一张不出)。
+    dsc->data_size = (uint32_t)w * h * 2;
     dsc->data = data;
 }
 
