@@ -4,22 +4,26 @@
  */
 
 import sharp from "sharp";
-import { rawToRgb565Le } from "./rgb565.js";
+import { rawToRgb565A8Le, rawToRgb565Le } from "./rgb565.js";
 
 export interface ConvertedImage {
   w: number;
   h: number;
-  /** RGB565 LE bytes, length = w * h * 2. */
+  /** RGB565 (map) = w*h*2; RGB565A8 (sprites) = w*h*3 (color plane + A8). */
   data: Buffer;
 }
 
 export class AssetValidationError extends Error {}
 
 /**
- * Convert one PNG buffer to an RGB565 frame. Throws AssetValidationError when
- * the buffer is not a PNG. Alpha is discarded (the device format has no alpha).
+ * Convert one PNG buffer to a device frame. Sprites keep PNG alpha as an A8
+ * plane (RGB565A8); the map uses opaque RGB565. Throws AssetValidationError
+ * when the buffer is not a PNG.
  */
-export async function convertPngToRgb565(buf: Buffer): Promise<ConvertedImage> {
+export async function convertPngToRgb565(
+  buf: Buffer,
+  opts: { alpha: boolean } = { alpha: true },
+): Promise<ConvertedImage> {
   let meta: sharp.Metadata;
   try {
     meta = await sharp(buf).metadata();
@@ -29,22 +33,21 @@ export async function convertPngToRgb565(buf: Buffer): Promise<ConvertedImage> {
   if (meta.format !== "png") {
     throw new AssetValidationError(`仅支持 PNG（收到 ${meta.format ?? "未知格式"}）`);
   }
-  const { data, info } = await sharp(buf)
-    .removeAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+  const pipeline = opts.alpha ? sharp(buf).ensureAlpha() : sharp(buf).removeAlpha();
+  const { data, info } = await pipeline.raw().toBuffer({ resolveWithObject: true });
   if (info.channels !== 3 && info.channels !== 4) {
     throw new AssetValidationError(`不支持的通道数: ${info.channels}`);
   }
+  const bmp = {
+    width: info.width,
+    height: info.height,
+    data,
+    channels: info.channels as 3 | 4,
+  };
   return {
     w: info.width,
     h: info.height,
-    data: rawToRgb565Le({
-      width: info.width,
-      height: info.height,
-      data,
-      channels: info.channels as 3 | 4,
-    }),
+    data: opts.alpha ? rawToRgb565A8Le(bmp) : rawToRgb565Le(bmp),
   };
 }
 
@@ -54,8 +57,9 @@ export async function convertWithSize(
   expectedW: number,
   expectedH: number,
   what: string,
+  opts: { alpha: boolean } = { alpha: true },
 ): Promise<ConvertedImage> {
-  const img = await convertPngToRgb565(buf);
+  const img = await convertPngToRgb565(buf, opts);
   if (img.w !== expectedW || img.h !== expectedH) {
     throw new AssetValidationError(
       `${what} 尺寸必须为 ${expectedW}×${expectedH}，实际 ${img.w}×${img.h}`,

@@ -194,11 +194,13 @@ int app_assets_installed_version(void) {
 }
 
 // 依据 manifest 取文件名与帧参数,整文件读堆。
+// 精灵类(actions/weather/decorations)为 RGB565A8(3 字节/像素),
+// 地图为不透明 RGB565(2 字节/像素) —— 与皮肤包契约一致。
 static bool load_frames(const char *file, uint16_t frames, uint16_t w, uint16_t h,
-                        uint8_t fps, app_asset_frames_t *out) {
+                        uint8_t fps, bool alpha, app_asset_frames_t *out) {
     memset(out, 0, sizeof(*out));
     if (!file || frames == 0 || w == 0 || h == 0) return false;
-    size_t need = (size_t)frames * w * h * 2;
+    size_t need = (size_t)frames * w * h * (alpha ? 3 : 2);
 
     if (s_use_embedded) {
         size_t len = 0;
@@ -310,10 +312,11 @@ static bool load_from_manifest(const char *section, const char *name, int index,
     char file[64];
     uint16_t frames = 0, w = 0, h = 0;
     uint8_t fps = 6;
+    bool alpha = strcmp(section, "map") != 0;
     if (!manifest_entry(section, name, index, file, sizeof(file), &frames, &w, &h, &fps)) {
         return false;
     }
-    return load_frames(file, frames, w, h, fps, out);
+    return load_frames(file, frames, w, h, fps, alpha, out);
 }
 
 bool app_assets_load_action(const char *name, app_asset_frames_t *out) {

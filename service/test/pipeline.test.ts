@@ -20,20 +20,23 @@ async function pngFromRaw(w: number, h: number, fill: [number, number, number]):
   return sharp(data, { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
 }
 
-test("pipeline: PNG -> RGB565 LE frame via sharp", async () => {
+test("pipeline: PNG -> RGB565A8 sprite frame via sharp", async () => {
   const png = await pngFromRaw(64, 64, [255, 0, 0]);
-  const img = await convertPngToRgb565(png);
+  const img = await convertPngToRgb565(png);   // 默认 alpha: 精灵
   assert.equal(img.w, 64);
   assert.equal(img.h, 64);
-  assert.equal(img.data.length, 64 * 64 * 2);
+  assert.equal(img.data.length, 64 * 64 * 3);   // 颜色平面 + A8
   // first pixel red -> 00 F8 (little-endian)
   assert.equal(img.data[0], 0x00);
   assert.equal(img.data[1], 0xf8);
-  // all pixels identical
-  assert.ok(img.data.every((b) => b === 0x00 || b === 0xf8));
+  // 无 alpha 通道的 PNG 补全不透明 A8
+  assert.ok(img.data.subarray(64 * 64 * 2).every((b) => b === 0xff));
+  // 地图走不透明 RGB565
+  const map = await convertPngToRgb565(png, { alpha: false });
+  assert.equal(map.data.length, 64 * 64 * 2);
 });
 
-test("pipeline: accepts PNG with alpha (alpha discarded)", async () => {
+test("pipeline: accepts PNG with alpha (kept in A8 plane)", async () => {
   const rgba = Buffer.alloc(8 * 8 * 4);
   for (let i = 0; i < 8 * 8; i++) {
     rgba[i * 4] = 0;
@@ -43,8 +46,10 @@ test("pipeline: accepts PNG with alpha (alpha discarded)", async () => {
   }
   const png = await sharp(rgba, { raw: { width: 8, height: 8, channels: 4 } }).png().toBuffer();
   const img = await convertPngToRgb565(png);
-  assert.equal(img.data.length, 8 * 8 * 2);
+  assert.equal(img.data.length, 8 * 8 * 3);   // RGB565A8
   assert.deepEqual([...img.data.subarray(0, 2)], [0xe0, 0x07]);
+  // PNG 的半透明 alpha 保留进 A8 平面
+  assert.equal(img.data[8 * 8 * 2], 128);
 });
 
 test("pipeline: rejects non-PNG input and wrong dimensions", async () => {

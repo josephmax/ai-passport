@@ -22,6 +22,28 @@ export interface RawBitmap {
   channels: 3 | 4;
 }
 
+/**
+ * RGB565A8 conversion: color plane (w*h*2, LE u16) followed by an A8 alpha
+ * plane (w*h). Sprites use this so unpainted pixels are transparent on the
+ * device (LVGL LV_COLOR_FORMAT_RGB565A8).
+ */
+export function rawToRgb565A8Le(bmp: RawBitmap): Buffer {
+  const px = bmp.width * bmp.height;
+  const out = Buffer.alloc(px * 3);
+  const step = bmp.channels;
+  for (let i = 0; i < px; i++) {
+    const r = bmp.data[i * step]!;
+    const g = bmp.data[i * step + 1]!;
+    const b = bmp.data[i * step + 2]!;
+    const v = rgbTo565(r, g, b);
+    out[i * 2] = v & 0xff;
+    out[i * 2 + 1] = (v >> 8) & 0xff;
+    const a = step === 4 ? bmp.data[i * step + 3]! : 255;
+    out[px * 2 + i] = a;
+  }
+  return out;
+}
+
 /** Convert a raw RGBA/RGB bitmap to a little-endian RGB565 frame buffer. */
 export function rawToRgb565Le(bmp: RawBitmap): Buffer {
   const out = Buffer.alloc(bmp.width * bmp.height * 2);
@@ -44,11 +66,13 @@ export class Rgb565Canvas {
   readonly width: number;
   readonly height: number;
   private readonly buf: Buffer;
+  private readonly painted: Uint8Array;
 
   constructor(width: number, height: number) {
     this.width = width;
     this.height = height;
     this.buf = Buffer.alloc(width * height * 2);
+    this.painted = new Uint8Array(width * height);
   }
 
   set(x: number, y: number, r: number, g: number, b: number): void {
@@ -56,6 +80,7 @@ export class Rgb565Canvas {
     const yi = Math.round(y);
     if (xi < 0 || yi < 0 || xi >= this.width || yi >= this.height) return;
     const v = rgbTo565(r, g, b);
+    this.painted[yi * this.width + xi] = 1;
     const i = (yi * this.width + xi) * 2;
     this.buf[i] = v & 0xff;
     this.buf[i + 1] = (v >> 8) & 0xff;
@@ -103,5 +128,14 @@ export class Rgb565Canvas {
 
   toBuffer(): Buffer {
     return Buffer.from(this.buf);
+  }
+
+  /** RGB565A8: 颜色平面 + A8(未绘制像素全透明),精灵契约格式。 */
+  toRgb565A8Buffer(): Buffer {
+    const out = Buffer.alloc(this.width * this.height * 3);
+    this.buf.copy(out, 0);
+    const px = this.width * this.height;
+    for (let i = 0; i < px; i++) out[px * 2 + i] = this.painted[i] ? 0xff : 0;
+    return out;
   }
 }

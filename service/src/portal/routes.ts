@@ -433,7 +433,7 @@ ${slotRow("run")}${slotRow("fight")}${slotRow("sleep")}${slotRow("victory")}
 
       if (slot === "map") {
         if (files.length !== 1) throw new AssetValidationError("地图槽位只接受 1 张 PNG");
-        const img = await convertWithSize(files[0]!.buffer, MAP_W, MAP_H, "地图条带");
+        const img = await convertWithSize(files[0]!.buffer, MAP_W, MAP_H, "地图条带", { alpha: false });
         await deps.draft.setMap(img.data, img.w, img.h);
         return redirect(reply, "/portal/assets", `地图已更新（${img.w}×${img.h}）`);
       }

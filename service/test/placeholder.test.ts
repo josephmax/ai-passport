@@ -8,7 +8,9 @@ import {
 } from "../src/assets/placeholder.js";
 import { MANIFEST_NAME, parseBundle, BUNDLE_MAX_BYTES } from "../src/assets/bundleFormat.js";
 
-const FRAME_BYTES = (w: number, h: number, frames: number) => w * h * 2 * frames;
+// 契约:精灵帧 = w*h*3(RGB565A8),地图帧 = w*h*2(不透明 RGB565)。
+const SPRITE_BYTES = (w: number, h: number, frames: number) => w * h * 3 * frames;
+const MAP_BYTES = (w: number, h: number) => w * h * 2;
 
 test("placeholder: manifest matches the spec example field-by-field", () => {
   const m = placeholderManifest(1);
@@ -23,16 +25,16 @@ test("placeholder: manifest matches the spec example field-by-field", () => {
   assert.equal(m.version, 1);
 });
 
-test("placeholder: frame files have exact RGB565 sizes (w*h*2 per frame)", () => {
+test("placeholder: sprite frames are RGB565A8 (w*h*3), map RGB565 (w*h*2)", () => {
   const files = generatePlaceholderDataFiles();
-  assert.equal(files.get("run.bin")!.length, FRAME_BYTES(64, 64, ACTION_SPECS.run.frames));
-  assert.equal(files.get("fight.bin")!.length, FRAME_BYTES(64, 64, ACTION_SPECS.fight.frames));
-  assert.equal(files.get("sleep.bin")!.length, FRAME_BYTES(64, 64, ACTION_SPECS.sleep.frames));
-  assert.equal(files.get("victory.bin")!.length, FRAME_BYTES(64, 64, ACTION_SPECS.victory.frames));
-  assert.equal(files.get("map.bin")!.length, FRAME_BYTES(240, 160, 1));
-  assert.equal(files.get("deco0.bin")!.length, FRAME_BYTES(24, 24, 1));
-  assert.equal(files.get("rain.bin")!.length, FRAME_BYTES(16, 16, 2));
-  assert.equal(files.get("snow.bin")!.length, FRAME_BYTES(16, 16, 2));
+  assert.equal(files.get("run.bin")!.length, SPRITE_BYTES(64, 64, ACTION_SPECS.run.frames));
+  assert.equal(files.get("fight.bin")!.length, SPRITE_BYTES(64, 64, ACTION_SPECS.fight.frames));
+  assert.equal(files.get("sleep.bin")!.length, SPRITE_BYTES(64, 64, ACTION_SPECS.sleep.frames));
+  assert.equal(files.get("victory.bin")!.length, SPRITE_BYTES(64, 64, ACTION_SPECS.victory.frames));
+  assert.equal(files.get("map.bin")!.length, MAP_BYTES(240, 160));
+  assert.equal(files.get("deco0.bin")!.length, SPRITE_BYTES(24, 24, 1));
+  assert.equal(files.get("rain.bin")!.length, SPRITE_BYTES(16, 16, 2));
+  assert.equal(files.get("snow.bin")!.length, SPRITE_BYTES(16, 16, 2));
 });
 
 test("placeholder: bundles are valid APB1, deterministic, under the 4 MB cap", () => {

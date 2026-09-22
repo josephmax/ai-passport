@@ -82,17 +82,19 @@ static int64_t now_ms(void) {
     return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
+// 精灵(RGB565A8):颜色平面 w*h*2 + A8 透明平面 w*h;地图(RGB565)不透明。
+#define SPRITE_BPP 3   // 字节/像素(RGB565A8)
+
 static void fill_dsc(lv_image_dsc_t *dsc, const uint8_t *data,
-                     uint16_t w, uint16_t h) {
+                     uint16_t w, uint16_t h, bool alpha) {
     memset(dsc, 0, sizeof(*dsc));
     dsc->header.magic = LV_IMAGE_HEADER_MAGIC;
     dsc->header.w = w;
     dsc->header.h = h;
-    dsc->header.stride = w * 2;
-    dsc->header.cf = LV_COLOR_FORMAT_RGB565;
-    // data_size 缺失曾让全部图片被 LVGL 判为"零长度"而拒绘
-    // (真机现象:文字/圆点全好,地图与角色一张不出)。
-    dsc->data_size = (uint32_t)w * h * 2;
+    dsc->header.stride = w * 2;   // 颜色平面步长
+    dsc->header.cf = alpha ? LV_COLOR_FORMAT_RGB565A8 : LV_COLOR_FORMAT_RGB565;
+    // data_size 缺失曾让全部图片被 LVGL 判为"零长度"而拒绘。
+    dsc->data_size = (uint32_t)w * h * (alpha ? 3 : 2);
     dsc->data = data;
 }
 
@@ -112,8 +114,8 @@ static bool load_action(act_t act) {
     s_act_dsc = lv_malloc(sizeof(lv_image_dsc_t) * s_act.frames);
     for (uint16_t i = 0; i < s_act.frames; i++) {
         fill_dsc(&s_act_dsc[i],
-                 s_act.data + (size_t)i * s_act.w * s_act.h * 2,
-                 s_act.w, s_act.h);
+                 s_act.data + (size_t)i * s_act.w * s_act.h * SPRITE_BPP,
+                 s_act.w, s_act.h, true);
     }
     return true;
 }
@@ -166,8 +168,8 @@ static void load_weather_sprites(app_weather_kind_t kind) {
         }
         s_wx_loaded = true;
         for (uint16_t i = 0; i < s_wx.frames && i < 4; i++) {
-            fill_dsc(&wx_dsc[i], s_wx.data + (size_t)i * s_wx.w * s_wx.h * 2,
-                     s_wx.w, s_wx.h);
+            fill_dsc(&wx_dsc[i], s_wx.data + (size_t)i * s_wx.w * s_wx.h * SPRITE_BPP,
+                     s_wx.w, s_wx.h, true);
         }
         for (int i = 0; i < WEATHER_SPRITES; i++) {
             lv_image_set_src(s_wx_img[i], &wx_dsc[i % s_wx.frames]);
@@ -368,7 +370,7 @@ ui_pet_t *ui_pet_create(void) {
 
     // 地图(两份 image 共享单缓冲)。
     if (app_assets_load_map(&s_map)) {
-        fill_dsc(&s_map_dsc, s_map.data, s_map.w, s_map.h);
+        fill_dsc(&s_map_dsc, s_map.data, s_map.w, s_map.h, false);
         for (int i = 0; i < 2; i++) {
             s_map_img[i] = lv_image_create(scr);
             lv_image_set_src(s_map_img[i], &s_map_dsc);
@@ -400,7 +402,7 @@ ui_pet_t *ui_pet_create(void) {
     }
     if (app_assets_load_decoration(0, &s_deco)) {
         static lv_image_dsc_t deco_dsc;
-        fill_dsc(&deco_dsc, s_deco.data, s_deco.w, s_deco.h);
+        fill_dsc(&deco_dsc, s_deco.data, s_deco.w, s_deco.h, true);
         s_deco_img = lv_image_create(scr);
         lv_image_set_src(s_deco_img, &deco_dsc);
         s_deco_x = MAP_W + 60;

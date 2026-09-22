@@ -51,7 +51,7 @@ export function generateRunFrames(): Buffer[] {
     for (let k = 0; k < 3; k++) {
       c.line(10 + k * 4, 34 + k * 3, 18 + k * 4, 34 + k * 3, 90, 160, 255, 1);
     }
-    frames.push(c.toBuffer());
+    frames.push(c.toRgb565A8Buffer());
   }
   return frames;
 }
@@ -89,7 +89,7 @@ export function generateFightFrames(): Buffer[] {
         c.set(40 + k, y0 - 30 + k * 2, 255, 255, 140);
       }
     }
-    frames.push(c.toBuffer());
+    frames.push(c.toRgb565A8Buffer());
   }
   return frames;
 }
@@ -120,7 +120,7 @@ export function generateSleepFrames(): Buffer[] {
       c.line(zx + 5, zy, zx, zy + 5, 140, 200, 255, 1);
       c.line(zx, zy + 5, zx + 5, zy + 5, 140, 200, 255, 1);
     }
-    frames.push(c.toBuffer());
+    frames.push(c.toRgb565A8Buffer());
   }
   return frames;
 }
@@ -152,7 +152,7 @@ export function generateVictoryFrames(): Buffer[] {
     // shine
     c.set(28, y - 3, 255, 255, 255);
     c.set(29, y - 2, 255, 255, 255);
-    frames.push(c.toBuffer());
+    frames.push(c.toRgb565A8Buffer());
   }
   return frames;
 }
@@ -214,7 +214,7 @@ export function generateDecoration(): Buffer {
   c.circle(20, 17, 5, 46, 130, 52);
   c.fillRect(6, 20, 14, 3, 30, 90, 36);
   c.set(13, 10, 255, 120, 140); // little berry
-  return c.toBuffer();
+  return c.toRgb565A8Buffer();
 }
 
 export function generateRainFrames(): Buffer[] {
@@ -228,7 +228,7 @@ export function generateRainFrames(): Buffer[] {
       c.set(x - 1, y + 1, 90, 140, 240);
       c.set(x - 2, y + 2, 60, 110, 220);
     }
-    frames.push(c.toBuffer());
+    frames.push(c.toRgb565A8Buffer());
   }
   return frames;
 }
@@ -244,7 +244,7 @@ export function generateSnowFrames(): Buffer[] {
       c.set(x + 1, y, 210, 220, 240);
       c.set(x, y + 1, 210, 220, 240);
     }
-    frames.push(c.toBuffer());
+    frames.push(c.toRgb565A8Buffer());
   }
   return frames;
 }

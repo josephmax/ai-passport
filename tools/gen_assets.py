@@ -10,7 +10,10 @@ APB1 格式:
   magic "APB1" | u16 version | u16 file_count |
   每文件: u16 name_len + name + u32 data_len + data(全小端)
 
-帧数据为逐帧 RGB565 小端 u16 拼接(LVGL 原生字节序)。
+帧数据格式(与固件/服务三端一致的契约):
+  - map.bin: 不透明 RGB565,小端 u16 逐帧拼接(240x160 单帧)。
+  - 其余精灵(run/fight/sleep/victory/deco/rain/snow): RGB565A8,
+    每帧 = 颜色平面(w*h*2, 小端) + A8 透明平面(w*h),逐帧拼接。
 只用标准库,绘制为程序化像素画,确定性输出(固定随机种子)。
 """
 import json
@@ -56,7 +59,8 @@ C = {
 class Canvas:
     def __init__(self, w, h):
         self.w, self.h = w, h
-        self.px = [[0] * w for _ in range(h)]
+        # None = 未绘制(输出为全透明);精灵用 RGB565A8,背景不再霸占黑色。
+        self.px = [[None] * w for _ in range(h)]
 
     def set(self, x, y, c):
         if 0 <= x < self.w and 0 <= y < self.h:
@@ -80,11 +84,22 @@ class Canvas:
                      round(y0 + (y1 - y0) * i / n), c)
 
     def pack(self):
+        """不透明 RGB565(地图条带用)。未绘制像素落黑色。"""
         b = bytearray()
         for row in self.px:
             for c in row:
-                b += struct.pack("<H", c)
+                b += struct.pack("<H", c if c is not None else 0)
         return bytes(b)
+
+    def pack_alpha(self):
+        """RGB565A8:颜色平面(w*h*2) + A8 透明平面(w*h),精灵用。"""
+        color = bytearray()
+        alpha = bytearray()
+        for row in self.px:
+            for c in row:
+                color += struct.pack("<H", c if c is not None else 0)
+                alpha.append(0 if c is None else 255)
+        return bytes(color) + bytes(alpha)
 
 
 # ---------------------------------------------------------------- 宠物帧
@@ -156,7 +171,7 @@ def frames_pet(mode, count):
     for f in range(count):
         cv = Canvas(64, 64)
         draw_pet(cv, f, count, mode)
-        out += cv.pack()
+        out += cv.pack_alpha()      # 精灵带透明
     return bytes(out)
 
 
@@ -203,12 +218,12 @@ def map_strip():
 
 
 def deco_bush():
-    cv = Canvas(24, 24)
+    cv = Canvas(24, 24)   # 装扮同样透明
     cv.disc(9, 16, 7, C["bush"])
     cv.disc(16, 15, 6, C["bush"])
     cv.disc(10, 12, 4, C["bush_hi"])
     cv.rect(11, 21, 3, 3, C["ink"])
-    return cv.pack()
+    return cv.pack_alpha()
 
 
 def weather_frames(kind):
