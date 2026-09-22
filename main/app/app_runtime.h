@@ -43,6 +43,8 @@ typedef struct {
     app_rest_window_t rest;           // 生效中的作息窗口
     app_settings_t settings;
     bool assets_ok;                   // 素材区可用(否则 UI 纯色降级)
+    int battery_soc;                  // 电量缓存(-1 未知):I2C 只在电源任务读,
+                                      // 渲染路径绝不做总线 IO(曾致 LVGL 持锁卡死)
     // 天气当前态(由快照推导,宠物页读取)
     int weather_code;                 // WMO;离线沿用最后已知
     int sunrise_min, sunset_min;

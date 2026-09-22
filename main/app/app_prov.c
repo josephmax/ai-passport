@@ -36,6 +36,7 @@ static int s_dns_sock = -1;
 static TaskHandle_t s_dns_task;
 static TaskHandle_t s_task;
 static QueueHandle_t s_queue;
+static volatile bool s_start_requested;
 
 static const char PAGE_FORM[] =
     "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
@@ -178,12 +179,18 @@ static void ap_services_stop(void) {
     dns_stop();
 }
 
-// ---- worker:收表单 → 切 STA → 连接 → 配对 ----
+// ---- worker:收表单/启动请求 → 切 STA → 连接 → 配对 ----
 static void prov_task(void *arg) {
     (void)arg;
     prov_form_t form;
     for (;;) {
-        if (xQueueReceive(s_queue, &form, portMAX_DELAY) != pdTRUE) continue;
+        if (xQueueReceive(s_queue, &form, pdMS_TO_TICKS(500)) != pdTRUE) {
+            if (s_start_requested) {
+                s_start_requested = false;
+                app_prov_start();
+            }
+            continue;
+        }
         s_state = APP_PROV_CONNECTING;
         ap_services_stop();
         esp_wifi_set_mode(WIFI_MODE_STA);
@@ -295,4 +302,13 @@ app_prov_state_t app_prov_state(void) {
 
 const char *app_prov_ap_name(void) {
     return s_state == APP_PROV_IDLE ? NULL : s_ap_name;
+}
+
+void app_prov_request_start(void) {
+    // 队列/任务不存在时(理论上不会)同步启动兜底。
+    if (!s_task) {
+        app_prov_start();
+        return;
+    }
+    s_start_requested = true;
 }

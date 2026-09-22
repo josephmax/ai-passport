@@ -3,7 +3,6 @@
 
 #include "app_fmt.h"
 #include "app_runtime.h"
-#include "bsp_battery.h"
 #include "bsp_display.h"
 #include "lvgl.h"
 
@@ -83,7 +82,7 @@ void ui_theme_status_bar_refresh(ui_status_bar_t *bar) {
     lv_label_set_text(bar->sync, buf);
     lv_label_set_text(bar->wifi, rt->wifi_connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
 
-    int soc = bsp_battery_soc();
+    int soc = app_runtime()->battery_soc;   // 读缓存,渲染路径无 I2C
     if (soc < 0) {
         lv_obj_add_flag(bar->battery, LV_OBJ_FLAG_HIDDEN);   // 读失败优雅隐藏
     } else {

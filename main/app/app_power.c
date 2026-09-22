@@ -10,6 +10,7 @@
 #include "bsp_display.h"
 #include "bsp_i2c.h"
 #include "bsp_pins.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "driver/gpio.h"
@@ -109,8 +110,24 @@ static void power_task(void *arg) {
     (void)arg;
     // 开机即视为一次活动。
     s_last_activity_ms = now_ms();
+    int64_t last_soc_ms = -30000;   // 立即读第一次
+    int64_t last_beat_ms = 0;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(500));
+        {
+            int64_t now0 = now_ms();
+            // 电量缓存:唯一的 I2C 读取点(30s 一次),UI 只读缓存。
+            if (now0 - last_soc_ms >= 30000) {
+                app_runtime()->battery_soc = bsp_battery_soc();
+                last_soc_ms = now0;
+            }
+            // 心跳日志:真机上区分"LVGL 卡死"与"整机卡死"的观测锚点。
+            if (now0 - last_beat_ms >= 10000) {
+                last_beat_ms = now0;
+                ESP_LOGI(TAG, "心跳 %ds 堆剩余=%u", (int)(now0 / 1000),
+                         (unsigned)heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
+            }
+        }
         app_runtime_t *rt = app_runtime();
         int64_t now = now_ms();
         int64_t idle_ms = now - s_last_activity_ms;

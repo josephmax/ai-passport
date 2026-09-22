@@ -249,7 +249,8 @@ bool ui_settings_key(bool ok_short, bool ok_long, bool up, bool down) {
         enter_rest_view();
         break;
     case ITEM_WIFI:
-        if (app_prov_start()) enter_prov_view();
+        app_prov_request_start();   // 异步:Wi-Fi 重配绝不占 UI 锁
+        enter_prov_view();
         break;
     case ITEM_CONNECT:
         enter_connect_view();

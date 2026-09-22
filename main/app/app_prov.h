@@ -21,6 +21,10 @@ app_prov_state_t app_prov_state(void);
 // 启动配网(切 AP 模式)。幂等;已在进行中直接返回 true。
 bool app_prov_start(void);
 
+// 异步请求启动配网:立即返回,重活(Wi-Fi 重配)由 worker 任务完成 ——
+// 供持 LVGL 锁的 UI 回调调用,避免在渲染关键区里做秒级阻塞。
+void app_prov_request_start(void);
+
 // 取消配网(熄屏/用户退出时调用):停 DNS/HTTP/AP,回 STA 模式。
 void app_prov_cancel(void);
 
