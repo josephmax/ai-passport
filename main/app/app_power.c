@@ -2,6 +2,7 @@
 #include "app_power.h"
 
 #include "app_focus.h"
+#include "app_prov.h"
 #include "app_runtime.h"
 #include "app_service.h"
 #include "bsp_audio.h"
@@ -122,6 +123,12 @@ static void power_task(void *arg) {
         }
 
         // ---- 熄屏后的路径 ----
+        // 配网热点需要常开:等待手机提交表单期间不睡眠。
+        if (app_prov_state() != APP_PROV_IDLE) {
+            static bool logged;
+            if (!logged) { ESP_LOGI(TAG, "配网进行中,暂不睡眠"); logged = true; }
+            continue;
+        }
         if (rt->focus.running) {
             int64_t boundary = app_focus_next_boundary_ms(&rt->focus, now);
             int64_t slice = boundary < 0 ? LIGHT_SLICE_MAX_MS : boundary;

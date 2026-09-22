@@ -3,7 +3,9 @@
 // (Wi-Fi 配网入口在"连接手机"子页;独立配网流程随本地服务线接入)
 #include "ui_settings.h"
 
+#include "app_prov.h"
 #include "app_runtime.h"
+#include "app_sync.h"
 #include "app_store.h"
 #include "bsp_display.h"
 #include "ui_theme.h"
@@ -19,6 +21,7 @@ typedef enum {
     ITEM_VOLUME,
     ITEM_SCREEN_OFF,
     ITEM_REST,
+    ITEM_WIFI,
     ITEM_CONNECT,
     ITEM_SYNC,
     ITEM_COUNT,
@@ -29,7 +32,7 @@ static ui_status_bar_t s_status;
 static lv_obj_t *s_rows[ITEM_COUNT];
 static lv_obj_t *s_values[ITEM_COUNT];
 static int s_selected;
-typedef enum { SUB_NONE = 0, SUB_REST, SUB_CONNECT } sub_mode_t;
+typedef enum { SUB_NONE = 0, SUB_REST, SUB_CONNECT, SUB_PROV } sub_mode_t;
 static sub_mode_t s_sub_mode;
 static int s_rest_pick;               // 0=起 1=止
 static lv_obj_t *s_sub_view;
@@ -72,6 +75,16 @@ static void refresh_values(void) {
              rt->settings.rest_start_min / 60, rt->settings.rest_start_min % 60,
              rt->settings.rest_end_min / 60, rt->settings.rest_end_min % 60);
     lv_label_set_text(s_values[ITEM_REST], buf);
+    switch (app_prov_state()) {
+    case APP_PROV_AP_UP: lv_label_set_text(s_values[ITEM_WIFI], "热点已开"); break;
+    case APP_PROV_CONNECTING: lv_label_set_text(s_values[ITEM_WIFI], "连接中"); break;
+    case APP_PROV_PAIRING: lv_label_set_text(s_values[ITEM_WIFI], "配对中"); break;
+    case APP_PROV_DONE: lv_label_set_text(s_values[ITEM_WIFI], "成功"); break;
+    case APP_PROV_FAILED: lv_label_set_text(s_values[ITEM_WIFI], "重试"); break;
+    default:
+        lv_label_set_text(s_values[ITEM_WIFI], rt->wifi_connected ? "已连接" : "进入");
+        break;
+    }
     lv_label_set_text(s_values[ITEM_CONNECT], rt->paired ? "已配对" : "未配网");
     lv_label_set_text(s_values[ITEM_SYNC], rt->wifi_connected ? "按 OK 同步" : "未连接");
 }
@@ -120,6 +133,14 @@ static void enter_connect_view(void) {
     lv_label_set_text(s_token_label, rt->paired ? "令牌正常" : "未配对(等待配网)");
 }
 
+static void enter_prov_view(void) {
+    s_sub_mode = SUB_PROV;
+    lv_obj_clear_flag(s_sub_view, LV_OBJ_FLAG_HIDDEN);
+    const char *ap = app_prov_ap_name();
+    lv_label_set_text(s_rest_labels[0], ap ? ap : "Passport-****");
+    lv_label_set_text(s_rest_labels[1], "开放热点 · 手机连上自动弹出");
+}
+
 static void exit_sub(void) {
     s_sub_mode = SUB_NONE;
     lv_obj_add_flag(s_sub_view, LV_OBJ_FLAG_HIDDEN);
@@ -160,6 +181,13 @@ bool ui_settings_key(bool ok_short, bool ok_long, bool up, bool down) {
         if (ok_long) exit_sub();
         return true;   // 只读页:长按退出
     }
+    if (s_sub_mode == SUB_PROV) {
+        if (ok_long) {
+            app_prov_cancel();
+            exit_sub();
+        }
+        return true;
+    }
 
     if (up || down) {
         s_selected = (s_selected + (up ? ITEM_COUNT - 1 : 1)) % ITEM_COUNT;
@@ -188,12 +216,17 @@ bool ui_settings_key(bool ok_short, bool ok_long, bool up, bool down) {
     case ITEM_REST:
         enter_rest_view();
         break;
+    case ITEM_WIFI:
+        if (app_prov_start()) enter_prov_view();
+        break;
     case ITEM_CONNECT:
         enter_connect_view();
         break;
     case ITEM_SYNC:
-        // 同步任务随本地服务线接入;未配网时仅提示。
-        ESP_LOGI(TAG, "手动同步请求(paired=%d)", rt->paired);
+        if (rt->paired && rt->wifi_connected) {
+            app_sync_request_now();
+            lv_label_set_text(s_values[ITEM_SYNC], "同步中…");
+        }
         break;
     default:
         break;
@@ -216,10 +249,10 @@ ui_settings_t *ui_settings_create(void) {
     lv_obj_set_pos(title, 12, 30);
 
     static const char *NAMES[ITEM_COUNT] = {
-        "亮度", "音量", "自动息屏", "作息时间", "连接手机", "立即同步",
+        "亮度", "音量", "自动息屏", "作息时间", "Wi-Fi 配网", "连接手机", "立即同步",
     };
     for (int i = 0; i < ITEM_COUNT; i++) {
-        s_rows[i] = ui_theme_card(scr, 10, 62 + i * 40, 220, 34, i == s_selected);
+        s_rows[i] = ui_theme_card(scr, 10, 58 + i * 38, 220, 32, i == s_selected);
         lv_obj_t *name = lv_label_create(s_rows[i]);
         lv_obj_set_style_text_font(name, &app_font_12, 0);
         lv_obj_set_style_text_color(name, lv_color_hex(UI_INK), 0);

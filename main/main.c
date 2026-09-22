@@ -6,7 +6,9 @@
 #include "app_audio_fx.h"
 #include "app_assets.h"
 #include "app_focus.h"
+#include "app_net.h"
 #include "app_power.h"
+#include "app_sync.h"
 #include "app_runtime.h"
 #include "app_service.h"
 #include "app_store.h"
@@ -101,6 +103,9 @@ void app_main(void) {
 
     ui_shell_init();
     ui_shell_boot_refresh();
+
+    app_net_init();
+    app_sync_init();
 
     if (!app_power_init()) {
         ESP_LOGW(TAG, "电源管理任务启动失败(息屏/睡眠不可用)");
