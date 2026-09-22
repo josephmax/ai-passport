@@ -98,14 +98,18 @@ static void deep_sleep_now(void) {
     (void)bsp_audio_sleep();
     (void)bsp_audio_prepare_deep_sleep();
     (void)bsp_i2c_prepare_deep_sleep();
+    // 拿不到锁说明渲染任务仍活跃:放弃本次深睡,保持清醒。
+    // 此前此处写着重启"恢复",造成真机上"放着不动就自己重启"的幽灵死机。
     if (!bsp_lvgl_lock(1000)) {
-        ESP_LOGE(TAG, "无法停止 LVGL 刷屏,重启恢复");
-        esp_restart();
+        ESP_LOGE(TAG, "深睡前无法停止 LVGL 刷屏,放弃深睡保持清醒");
+        s_screen_off = false;
+        return;
     }
     (void)bsp_display_prepare_deep_sleep();
     esp_deep_sleep_start();
-    ESP_LOGE(TAG, "esp_deep_sleep_start 意外返回,重启");
-    esp_restart();
+    // 极意外的返回路径:同样不清醒时也绝不盲目重启。
+    ESP_LOGE(TAG, "esp_deep_sleep_start 意外返回,保持运行");
+    s_screen_off = false;
 }
 
 static void power_task(void *arg) {
