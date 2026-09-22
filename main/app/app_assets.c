@@ -8,6 +8,7 @@
 #include "cJSON.h"
 
 #include <stdio.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,7 +49,16 @@ static bool apb_read_u32(apb_reader_t *r, uint32_t *out) {
     return true;
 }
 
+// LittleFS 不自动创建父目录:安装/更新包前先把 bundle 目录建出来。
+static void ensure_bundle_dir(void) {
+    struct stat st = { 0 };
+    if (stat(MOUNT "/bundle", &st) != 0) {
+        mkdir(MOUNT "/bundle", 0775);
+    }
+}
+
 static int install_embedded_bundle(void) {
+    ensure_bundle_dir();
     apb_reader_t r = { pendant_default_bundle_start, pendant_default_bundle_end };
     uint16_t version = 0, count = 0;
     if (memcmp(r.p, "APB1", 4) != 0) return -1;

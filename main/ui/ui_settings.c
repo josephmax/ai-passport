@@ -32,6 +32,8 @@ static ui_status_bar_t s_status;
 static lv_obj_t *s_rows[ITEM_COUNT];
 static lv_obj_t *s_values[ITEM_COUNT];
 static int s_selected;
+// 一级=页面本身(UP/DOWN 由 Shell 切页);OK 进入二级列表后才接管上下键。
+static bool s_entered;
 typedef enum { SUB_NONE = 0, SUB_REST, SUB_CONNECT, SUB_PROV } sub_mode_t;
 static sub_mode_t s_sub_mode;
 static int s_rest_pick;               // 0=起 1=止
@@ -40,6 +42,7 @@ static lv_obj_t *s_rest_labels[2];
 static lv_obj_t *s_qr;
 static lv_obj_t *s_url_label;
 static lv_obj_t *s_token_label;
+static lv_obj_t *s_hint;
 
 static const uint16_t AUTO_OFF_STEPS[] = { 15, 30, 60, 120 };
 
@@ -92,11 +95,19 @@ static void refresh_values(void) {
 void ui_settings_refresh(void) {
     if (!s_settings) return;
     ui_theme_status_bar_refresh(&s_status);
+    bool active = s_entered && s_sub_mode == SUB_NONE;
     for (int i = 0; i < ITEM_COUNT; i++) {
+        bool sel = active && i == s_selected;
         lv_obj_set_style_bg_color(s_rows[i],
-            lv_color_hex(i == s_selected && s_sub_mode == SUB_NONE ? UI_SURFACE_HI : UI_SURFACE), 0);
+            lv_color_hex(sel ? UI_SURFACE_HI : UI_SURFACE), 0);
         lv_obj_set_style_border_color(s_rows[i],
-            lv_color_hex(i == s_selected && s_sub_mode == SUB_NONE ? UI_ACCENT : UI_LINE), 0);
+            lv_color_hex(sel ? UI_ACCENT : UI_LINE), 0);
+        // 一级态整页降透明度,提示当前上下键在切页
+        lv_obj_set_style_bg_opa(s_rows[i], s_entered ? LV_OPA_COVER : LV_OPA_60, 0);
+    }
+    if (s_hint) {
+        lv_label_set_text(s_hint, s_entered ? "上下选择 · 长按返回"
+                                            : "OK 进入设置");
     }
     refresh_values();
 }
@@ -142,7 +153,7 @@ static void enter_prov_view(void) {
 }
 
 static void exit_sub(void) {
-    s_sub_mode = SUB_NONE;
+    s_sub_mode = SUB_NONE;   // 回到二级列表(s_entered 保持 true)
     lv_obj_add_flag(s_sub_view, LV_OBJ_FLAG_HIDDEN);
     save_and_apply();
     ui_settings_refresh();
@@ -189,12 +200,25 @@ bool ui_settings_key(bool ok_short, bool ok_long, bool up, bool down) {
         return true;
     }
 
+    if (!s_entered) {
+        // 一级:只有 OK 进入二级被消费;上下留给 Shell 切页。
+        if (ok_short) {
+            s_entered = true;
+            ui_settings_refresh();
+        }
+        return ok_short;
+    }
+
+    if (ok_long) {               // 二级长按:退回一级
+        s_entered = false;
+        ui_settings_refresh();
+        return true;
+    }
     if (up || down) {
         s_selected = (s_selected + (up ? ITEM_COUNT - 1 : 1)) % ITEM_COUNT;
         ui_settings_refresh();
         return true;
     }
-    if (ok_long) return false;   // 未消费:无上级可退
     if (!ok_short) return false;
 
     switch ((item_t)s_selected) {
@@ -246,7 +270,11 @@ ui_settings_t *ui_settings_create(void) {
     lv_obj_set_style_text_font(title, &app_font_24, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(UI_INK), 0);
     lv_label_set_text(title, "设置");
-    lv_obj_set_pos(title, 12, 30);
+    lv_obj_set_pos(title, 12, 26);
+    s_hint = lv_label_create(scr);
+    lv_obj_set_style_text_font(s_hint, &app_font_12, 0);
+    lv_obj_set_style_text_color(s_hint, lv_color_hex(UI_INK_DIM), 0);
+    lv_obj_align(s_hint, LV_ALIGN_TOP_RIGHT, -12, 34);
 
     static const char *NAMES[ITEM_COUNT] = {
         "亮度", "音量", "自动息屏", "作息时间", "Wi-Fi 配网", "连接手机", "立即同步",

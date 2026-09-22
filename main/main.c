@@ -54,7 +54,9 @@ static void runtime_restore(void) {
         strlcpy(rt->service_url, net.service_url, sizeof(rt->service_url));
     }
 
-    char json[4096];
+    // 4KB 快照缓冲必须放静态区:主任务栈容不下(默认 3584B),栈上开大会
+    // 写穿金丝雀 → Stack protection fault(首次真机刷写即中招)。
+    static char json[4096];
     if (app_store_snapshot_json(json, sizeof(json))) {
         app_snapshot_t snap;
         if (app_snapshot_parse(json, strlen(json), &snap)) {

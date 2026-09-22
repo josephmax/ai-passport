@@ -115,11 +115,11 @@ static bool load_action(act_t act) {
 
 static void set_action(act_t act) {
     if (act == s_act_current) return;
-    if (!load_action(act)) act = ACT_NONE;
-    s_act_current = act;
+    bool loaded = load_action(act);
+    s_act_current = act;   // 失败也记账:不重试,无帧时隐藏,避免每帧刷错误
     s_frame_idx = 0;
     s_frame_ms = 0;
-    if (act == ACT_NONE) {
+    if (!loaded || !s_act.data) {
         lv_image_set_src(s_pet_img, NULL);
         return;
     }

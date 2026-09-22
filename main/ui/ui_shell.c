@@ -106,9 +106,8 @@ static void process_input(const input_event_t *in) {
         if (ok_short) { pet_ok_short(); return; }
         if (ok_long) { pet_ok_long(); return; }
     } else {
-        // 设置页内部消费列表/子视图;列表上的长按=退出设置页回仪表盘。
+        // 设置页:一级上下留给切页(由末尾分支处理),其余由页面层级消费。
         if (ui_settings_key(ok_short, ok_long, up, down)) return;
-        if (ok_long) { set_page(PAGE_DASH); return; }
     }
     if (up || down) {
         set_page((page_t)((s_page + (up ? PAGE_COUNT - 1 : 1)) % PAGE_COUNT));
