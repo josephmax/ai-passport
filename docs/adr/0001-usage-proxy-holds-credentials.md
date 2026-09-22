@@ -1,5 +1,22 @@
-# 0001 — 本地服务持有全部账户凭证，设备零凭证、每小时拉取
+**English** · [简体中文](0001-usage-proxy-holds-credentials.zh_CN.md)
 
-设备是可丢失的随身物件，且消费级订阅额度（Claude 周额度/5 小时额度等）没有面向设备的官方查询接口；同时手机配置中心需要管理多家 Coding 账户。因此决定：自托管一个**本地服务**（跑在用户自己的电脑/NAS 上），采集侧尽量复用开源方案（如 ccusage 模式读 Claude Code 本地日志；GLM/DeepSeek 走官方余额接口），对设备暴露一个统一的用量快照接口；所有厂商凭证只存在本地服务侧，设备仅持有服务地址与一个可吊销的设备令牌，入网后每小时拉取一次快照（天气随快照同拉）。被否决的方案：设备直连各厂商 API（key 明文进 NVS，设备丢失即泄密）；BLE 伴生电脑（离开电脑仪表盘即失效）；云端代理（引入公网暴露面与运维负担，无必要）。
+# 0001 — The local service holds all account credentials; the device holds none and pulls hourly
 
-代价：需要长期运行一个小服务；换来安全边界、采集复杂度全部隔离在服务侧、换厂商/换采集方案不重刷固件。
+The device is a losable wearable, and consumer subscription quotas (Claude
+weekly/5-hour limits, etc.) have no official device-facing query API; the
+phone config portal also needs to manage several Coding accounts. Decision:
+self-host a **local service** on the user's own computer/NAS. The collection
+side reuses open source tooling where possible (a ccusage-style reader over
+Claude Code's local logs; GLM/DeepSeek via their official balance APIs) and
+exposes one unified usage-snapshot endpoint to the device. All vendor
+credentials stay server-side; the device stores only the service address and
+a revocable device token, and pulls a snapshot once per hour after joining
+the network (weather rides along in the same pull). Rejected alternatives:
+the device calling vendor APIs directly (keys in plaintext NVS; a lost device
+leaks them); a BLE companion on the PC (the dashboard dies away from the
+computer); a cloud proxy (public attack surface and operational burden for no
+benefit).
+
+Cost: one small long-running service. In exchange: a clean security boundary,
+all collection complexity isolated server-side, and switching vendors or
+collectors never requires reflashing the device.

@@ -1,5 +1,20 @@
-# 0004 — 素材通路：设备只下载，PNG 转码在配置中心完成
+**English** · [简体中文](0004-asset-pipeline-server-side-transcode.zh_CN.md)
 
-宠物/地图/装扮素材需要可由用户替换。因此决定素材链路为：用户在配置中心（Web）上传 PNG → **服务端**转码为设备原生格式（角色 64×64、地图条带 240×160、装扮 24×24 的 RGB565 原始帧 + 帧表 manifest JSON）→ 打版本包 → 设备每小时同步时发现新版本，经 HTTPS 流式分块写入 LittleFS（边界写、不整包进内存）。设备端不做 PNG 解码、不做上传端点。被否决的方案：设备端解码 PNG（无 PSRAM，解码缓冲与 LVGL 抢堆，社区有同类教训）；SoftAP 直传（需维护第二套传输通道与设备侧转码，收益低）。
+# 0004 — Asset path: the device only downloads; PNG transcoding happens in the config portal
 
-代价：换素材必须经过本地服务中转；换来设备实现极简（一次 HTTPS 下载 + 顺序写文件），且转码逻辑集中在有完整工具链的服务端，便于校验尺寸/帧数合法性。
+Pet/map/decoration art must be user-replaceable. Decision on the pipeline:
+the user uploads PNGs in the config portal (web) → the **server** transcodes
+them to the device-native format (RGB565 raw frames — 64×64 characters,
+240×160 map strip, 24×24 decorations — plus a frame-table manifest JSON) →
+publishes a versioned bundle → the device notices the new version on its
+hourly sync and streams it over HTTPS in bounded chunks into LittleFS
+(bounded writes, never the whole bundle in RAM). The device does no PNG
+decoding and hosts no upload endpoint. Rejected: decoding PNG on-device (no
+PSRAM; decode buffers fight LVGL for heap, a known community trap); direct
+SoftAP upload (a second transport path plus on-device transcoding for little
+gain).
+
+Cost: changing assets always transits the local service. In exchange: a
+minimal device implementation (one HTTPS download plus sequential file
+writes) and transcoding logic centralized on the server, where the full tool
+chain makes size/frame validation easy.

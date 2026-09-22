@@ -1,5 +1,16 @@
-# 0002 — 重切分区：固件 3MB + LittleFS 素材区 5MB
+**English** · [简体中文](0002-partition-split-for-assets.zh_CN.md)
 
-上游基线把 8MB Flash 全部分给 `factory` 应用分区（0x7F0000），没有数据分区。宠物素材要求"可替换"（配置中心上传换装），必须有一块设备端可写的持久存储。因此决定把分区表改为：`factory` 应用分区缩至 0x2F0000（约 3MB，含中文字体子集与默认素材仍有充足余量），新增 `assets` LittleFS 数据分区 0x500000（5MB，约容纳 3~4 套完整皮肤包）。默认素材烧录在固件内，首次启动/素材区校验失败时写入 assets 分区。
+# 0002 — Re-cut partitions: 3 MB firmware + 5 MB LittleFS asset partition
 
-不可逆性：改变分区布局会擦除既有分区数据（对全新刷写无影响）；后续再调整尺寸同样丢数据，故尺寸一步到位。
+The upstream baseline gives the whole 8 MB Flash to the `factory` app
+partition (0x7F0000) with no data partition. Pet assets must be replaceable
+(uploaded and swapped from the config portal), which requires a persistent
+device-side writable store. Decision: resize to `factory` at 0x2F0000
+(~3 MB — still ample with the Chinese font subset and default assets) plus a
+new `assets` LittleFS data partition at 0x500000 (5 MB, roughly 3–4 complete
+asset bundles). Default assets are embedded in firmware and written into the
+assets partition on first boot or whenever its contents fail validation.
+
+Irreversibility: changing the partition layout erases existing partition data
+(harmless for a fresh flash); any later resize loses data again, so the sizes
+are chosen once, deliberately.

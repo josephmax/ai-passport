@@ -1,3 +1,5 @@
+[English](CONTEXT.md) · **简体中文**
+
 # AI Passport 多合一挂坠（Multi-Pendant）
 
 在 FoloToy AI Passport 可穿戴设备上运行的单一固件应用：LLM 用量仪表盘、以宠物为外壳的番茄钟、系统设置，以及手机侧的账户与素材配置中心。

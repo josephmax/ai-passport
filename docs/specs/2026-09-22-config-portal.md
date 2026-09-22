@@ -1,90 +1,116 @@
-# 配置中心（Config Portal）设计规格
+**English** · [简体中文](2026-09-22-config-portal.zh_CN.md)
 
-- 日期：2026-09-22
-- 状态：需求已确认，待实施
-- 上游文档：[多合一挂坠开发规格](./2026-09-22-multi-pendant-app.md) · 术语见根 [`CONTEXT.md`](../../CONTEXT.md)
-- 相关 ADR：[0001 本地服务](../adr/0001-usage-proxy-holds-credentials.md) · [0004 素材服务端转码](../adr/0004-asset-pipeline-server-side-transcode.md)
+# Config Portal Design Specification
 
-## 1. 三个配置面（职责边界）
+- Date: 2026-09-22
+- Status: requirements confirmed, pending implementation
+- Upstream: [Multi-pendant app spec](./2026-09-22-multi-pendant-app.md) · terminology in [`docs/CONTEXT.md`](../CONTEXT.md)
+- Related ADRs: [0001 local service](../adr/0001-usage-proxy-holds-credentials.md) · [0004 server-side transcoding](../adr/0004-asset-pipeline-server-side-transcode.md)
 
-| 配置面 | 托管者 | 管什么 |
+## 1. Three configuration surfaces (responsibility split)
+
+| Surface | Host | Manages |
 | --- | --- | --- |
-| SoftAP 配网页 | **设备**（captive portal 迷你页） | 新设备入网三要素：Wi-Fi 凭证、服务地址、一次性配对码 |
-| 设备设置页 | 设备（三按键 UI） | 亮度、音量、自动息屏、作息时间、立即同步、显示配对二维码 |
-| 配置中心 | **本地服务**（Web，手机浏览器） | 账户连接、主力账户、城市、Token 预算、素材全链路、设备与令牌管理 |
+| SoftAP provisioning page | **device** (captive-portal mini page) | the three onboarding essentials: Wi-Fi credentials, service address, one-time pairing code |
+| Device settings page | device (three-button UI) | brightness, volume, screen-off, rest window, sync now, pairing QR |
+| Config portal | **local service** (web, phone browser) | account connections, primary account, city, token budget, the full asset chain, devices and tokens |
 
-原则：**能放服务端的配置不放设备**——设备持久化的只有 Wi-Fi/服务地址/令牌、四项本机设置、素材包；其余配置是服务端状态，随每小时快照流经设备。
+Principle: **whatever can live server-side does not live on the device** — the
+device persists only Wi-Fi/service address/token, four local settings, and
+the asset bundle; everything else is service-side state that flows through
+the hourly snapshot.
 
-## 2. 配置中心信息架构（五个页签）
+## 2. Config portal information architecture (five tabs)
 
-### 2.1 总览
-- 设备卡 × N：在线状态、最后同步时间、电量、固件版本、当前皮肤包版本
-- 快照预览：渲染当前快照在设备上的样子（与设备所见一致）
+### 2.1 Overview
+- Device card × N: online status, last sync, battery, firmware version, current bundle version
+- Snapshot preview: renders the current snapshot as the device shows it (identical view)
 
-### 2.2 账户
-- 四家账户卡：
-  - **Claude**：采集器运行状态、最近采集时间、日志入口（采集器凭证留在采集侧配置）
-  - **GLM / DeepSeek**：API key 表单（写入即服务端加密存储，回显仅尾 4 位）
-  - **ChatGPT**：P2 占位，说明无官方接口
-- 每家卡的额度实时预览（周额度/5h/Token，无该维度则隐藏）
-- 底部：**主力账户**单选（决定设备仪表盘主界面三项）
+### 2.2 Accounts
+- Four provider cards:
+  - **Claude**: collector run status, last collection time, log entry (collector credentials stay in collector config)
+  - **GLM / DeepSeek**: API key form (encrypted at rest server-side on save; echo shows last 4 chars only)
+  - **ChatGPT**: P2 placeholder noting the missing official API
+- Per-card live quota preview (weekly/5h/tokens; missing dimensions hidden)
+- Footer: **primary account** radio (decides the three cards on the device dashboard main view)
 
-### 2.3 素材（P1 = 上传+校验+静态缩略图；动画预览 P2）
-- **动作**：四个槽位——跑步 / 打怪 / 睡觉 / 胜利。每槽：上传 PNG 帧序列（服务端转 RGB565）、设帧率（1–10fps）、静态缩略图宫格
-- **地图**：上传条带 PNG（转码后 240×160 RGB565），静态首尾拼接预览
-- **装扮**：元素库（上传 24×24 元素）、每元素启用开关、同屏数量 1–2
-- **皮肤包版本管理**：草稿集 → 「发布」生成新版本号 → 设备下次同步下载；历史版本列表 + 一键回滚（回滚=再发布旧版本号）
+### 2.3 Assets (P1 = upload + validation + static thumbnails; animation preview in P2)
+- **Actions**: four slots — run / fight / sleep / victory. Each: upload PNG
+  frame sequences (server transcodes to RGB565), set frame rate (1–10 fps),
+  static thumbnail grid
+- **Map**: upload the strip PNG (transcoded to 240×160 RGB565), static
+  end-to-end seam preview
+- **Decorations**: element library (upload 24×24 elements), per-element
+  enable switch, on-screen count 1–2
+- **Bundle versioning**: draft set → "publish" mints a new version → devices
+  download on next sync; version history list + one-click rollback (rollback
+  = republish the old version)
 
-### 2.4 偏好
-- 城市（搜索选择，用于天气与日出日落）
-- 周 Token 预算（null = 设备显示纯数值不加百分比）
+### 2.4 Preferences
+- City (search-select; drives weather and sunrise/sunset)
+- Weekly token budget (null = device shows the raw value without a percentage)
 
-### 2.5 设备
-- 设备列表：名称、令牌状态、最后同步
-- **生成一次性配对码**（6 位数字，10 分钟有效，单次使用）
-- 令牌吊销（吊销后设备下次同步失败，回到待配对态）
-- 每台设备的"当前皮肤包版本"与强制重下发
+### 2.5 Devices
+- Device list: name, token status, last sync
+- **Generate one-time pairing code** (6 digits, valid 10 minutes, single use)
+- Token revocation (a revoked device fails its next sync and returns to the
+  unpaired state)
+- Per-device "current bundle version" and force re-push
 
-## 3. 配对与配网流程（新设备开箱）
+## 3. Pairing and provisioning flow (new device, out of the box)
 
-1. 设备首次开机无 Wi-Fi → 自动进入 SoftAP 配网模式，屏幕显示热点名（`Passport-XXXX`）
-2. 手机连接该热点 → 自动弹出设备托管的配网页（captive portal）
-3. 表单三字段：Wi-Fi SSID / 密码 / 服务地址 + 一次性配对码（配置中心·设备页已生成）
-4. 设备保存 → 连接 Wi-Fi → `POST /api/pair {code, deviceName}` → 服务校验配对码 → 下发**设备令牌**
-5. 绑定完成；设备开始每小时同步，配置中心设备卡亮起
+1. First boot with no Wi-Fi → the device automatically enters SoftAP mode and
+   shows the AP name (`Passport-XXXX`) on screen
+2. Phone joins that AP → the device-hosted provisioning page pops up
+   automatically (captive portal)
+3. The form has four fields: Wi-Fi SSID / password / service address +
+   one-time pairing code (generated in the portal's devices tab)
+4. Device saves → joins Wi-Fi → `POST /api/pair {code, deviceName}` → the
+   service validates the code → issues a **device token**
+5. Pairing done; the device starts hourly sync and its portal device card
+   lights up
 
-配对码一次性 + 短时效；令牌可吊销重发（重新走配网流程）。
+Pairing codes are one-time and short-lived; tokens can be revoked and
+re-issued (provisioning runs again).
 
-## 4. API 草案
+## 4. API sketch
 
-| 端点 | 方向 | 说明 |
+| Endpoint | Direction | Notes |
 | --- | --- | --- |
-| `POST /api/pair` | 设备→服务 | 配对码换设备令牌 |
-| `GET /api/snapshot` | 设备→服务 | 头 `X-Device-Token`；快照 JSON（见主规格 §4.3），含 `assetBundle.version` |
-| `GET /assets/bundle_v{N}.bin` | 设备→服务 | 皮肤包（manifest+帧数据顺序打包），流式分块写 LittleFS |
-| `POST /api/portal/...` | 浏览器→服务 | 配置中心全部操作（账户/偏好/素材/设备管理），口令鉴权（登录后 session） |
+| `POST /api/pair` | device→service | exchange pairing code for device token |
+| `GET /api/snapshot` | device→service | header `X-Device-Token`; snapshot JSON (main spec §4.3), includes `assetBundle.version` |
+| `GET /assets/bundle_v{N}.bin` | device→service | asset bundle (manifest + frame data packed in order), streamed in chunks into LittleFS |
+| `POST /api/portal/...` | browser→service | all config-portal operations (accounts/preferences/assets/devices), password auth (session after login) |
 
-配置中心访问控制：**仅局域网 + 口令**；素材上传走 multipart，服务端校验尺寸/帧数后异步转码。
+Config portal access control: **LAN only + password**; asset uploads are
+multipart, with server-side size/frame validation and asynchronous
+transcoding.
 
-## 5. 变更生效时效（定稿：每小时 + 手动）
+## 5. Change propagation latency (final: hourly + manual)
 
-| 变更 | 设备可见时机 |
+| Change | When the device sees it |
 | --- | --- |
-| 主力账户 / 城市 / Token 预算 | 下次快照（≤1 小时），或设备"立即同步" |
-| 账户连接增删 | 同上（影响快照内容） |
-| 素材发布新版本 | 下次同步发现 `assetBundle.version` 变化 → 下载 → 原子切换 |
-| 设备本机设置（亮度等） | 即时（不经服务） |
+| Primary account / city / token budget | next snapshot (≤1 h), or device "sync now" |
+| Account add/remove | same (affects snapshot contents) |
+| Published new bundle version | next sync notices `assetBundle.version` change → download → atomic switch |
+| Device-local settings (brightness etc.) | immediate (does not transit the service) |
 
-## 6. 安全清单
+## 6. Security checklist
 
-- 厂商凭证、设备令牌、配置中心口令仅存服务端；设备只持有自身令牌
-- 令牌吊销即刻生效（下次同步被拒）
-- 配对码一次性、10 分钟过期
-- 配置中心不暴露公网（无公网监听；如需远程访问属 P3+ 自行加 VPN）
-- 素材包服务端校验：尺寸/帧数/包体上限（防塞爆 5MB LittleFS）
+- Vendor credentials, device tokens, and the portal password exist only
+  server-side; the device holds only its own token
+- Revocation takes effect immediately (next sync rejected)
+- Pairing codes: one-time, 10-minute expiry
+- The portal is never exposed to the public internet (no public listener;
+  remote access is P3+, bring your own VPN)
+- Bundle validation server-side: dimensions/frame counts/package size cap
+  (protects the 5 MB LittleFS)
 
-## 7. 切分
+## 7. Phasing
 
-- **P1**：账户页（Claude/GLM/DeepSeek）+ 主力账户、偏好页、设备页（配对码/吊销）、素材上传+校验+静态预览+发布/回滚、SoftAP 配网页、`/api/pair`
-- **P2**：动画预览（按帧率播放、地图滚动+装扮叠加）、ChatGPT 采集卡、快照预览渲染
-- **P3+**：多设备分组、远程访问方案、素材分享
+- **P1**: accounts tab (Claude/GLM/DeepSeek) + primary account, preferences,
+  devices (pairing codes/revocation), asset upload + validation + static
+  preview + publish/rollback, SoftAP provisioning page, `/api/pair`
+- **P2**: animation preview (play at frame rate, scrolling map with
+  decoration overlay), ChatGPT collector card, snapshot preview rendering
+- **P3+**: multi-device groups, remote access, asset sharing

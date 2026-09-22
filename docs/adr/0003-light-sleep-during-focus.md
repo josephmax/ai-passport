@@ -1,5 +1,20 @@
-# 0003 — 番茄计时用浅睡保精确，空闲无计时才深睡
+**English** · [简体中文](0003-light-sleep-during-focus.zh_CN.md)
 
-需求要求"息屏不打断计时"，且堆叠最长 125 分钟、结束时刻要准点触发胜利动画与音效。因此决定：番茄计时进行中允许屏幕关闭并进入**浅睡（light sleep）**——esp_timer 在浅睡下保持精确（不依赖 RTC 慢时钟），到达终点由定时器唤醒，任意按键亦可经 GPIO 唤醒；计时状态（结束时间戳、单元数、已授经验数）每次变更即写入 RTC 快速内存并同步 NVS，掉电重启后按绝对时间重算剩余。无计时进行且到达自动息屏阈值时才进入**深睡**。被否决的方案：计时中深睡+RTC 定时唤醒（内部 136kHz RC 慢时钟漂移可达百分级，125 分钟误差分钟级，且唤醒后需完整重建显示栈）；计时中不睡眠仅关背光（电流高一个数量级，磨损电池）。
+# 0003 — Focus timing stays exact via light sleep; deep sleep only when idle
 
-代价：浅睡电流（百微安级）高于深睡，但单次最长约两小时，电量影响可忽略。
+The product requires "screen-off must not interrupt timing", stacked blocks
+up to 125 minutes, and a punctual victory animation and sound at the finish.
+Decision: while focus blocks run, allow the screen off and enter **light
+sleep** — esp_timer stays exact under light sleep (no dependence on the slow
+RTC clock), the expiry timer wakes the chip, and any button wakes it via
+GPIO. Timing state (absolute end timestamp, unit count, granted-XP count) is
+written to RTC fast memory and mirrored to NVS on every change; after a power
+loss the remainder is recomputed from absolute time. Deep sleep is entered
+only when no block is running and the screen-off timeout elapses. Rejected:
+deep sleep during timing with an RTC-timer wake (the internal 136 kHz RC
+drifts by whole percents; minutes of error over 125 minutes, plus a full
+display-stack rebuild on wake); keeping the CPU awake with only the backlight
+off (an order of magnitude more current, wearing the battery).
+
+Cost: light-sleep current (~hundreds of µA) exceeds deep sleep, but a single
+run lasts at most ~two hours, with negligible battery impact.
