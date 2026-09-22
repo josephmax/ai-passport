@@ -195,6 +195,26 @@ All persisted in NVS.
 | Connect phone | QR code of the service address + current token status |
 | Volume | 0–5 steps (victory sound / beeps) |
 
+
+### 7.1 Settings interaction model (clarified)
+
+The settings page uses a strict level model so level-one key behavior
+stays unambiguous:
+
+- **Top level**: one large "Settings" button only. UP/DOWN switches top
+  pages; OK enters the list. Long-press: nothing.
+- **List level**: UP/DOWN moves the cursor; OK selects the highlighted
+  item; long-press returns to the top level.
+- **Adjust state** (value items: brightness, volume, screen-off):
+  entered by selecting the item. UP/DOWN changes the value (applied
+  live); OK confirms and returns to the list; long-press cancels and
+  reverts to the value at entry.
+- **Flow screens** (networking and multi-field items: rest window,
+  connect-phone, provisioning): selecting opens the next screen with
+  its own local keys (shown in the bottom hint bar); long-press walks
+  back one level.
+- "Sync now" is an immediate action: OK runs it and stays in the list.
+
 ## 8. Device ↔ service protocol
 
 - Sync: once immediately after Wi-Fi connects, then hourly; manual trigger
