@@ -32,6 +32,24 @@ run_static_checks() {
         tests/test_demo_navigation.c main/demo_navigation.c \
         -o "${test_dir}/test_demo_navigation"
     "${test_dir}/test_demo_navigation"
+    # 多合一挂坠应用纯逻辑模块(firmware 线与设备解耦,见 docs/specs/)
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_app_focus.c main/app/app_focus.c \
+        -o "${test_dir}/test_app_focus"
+    "${test_dir}/test_app_focus"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_app_xp.c main/app/app_xp.c main/app/app_time.c \
+        -o "${test_dir}/test_app_xp"
+    "${test_dir}/test_app_xp"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_app_weather.c main/app/app_weather.c \
+        -o "${test_dir}/test_app_weather"
+    "${test_dir}/test_app_weather"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain -Itests/third_party/cJSON \
+        tests/test_app_snapshot.c main/app/app_snapshot.c main/app/app_fmt.c \
+        tests/third_party/cJSON/cJSON.c \
+        -o "${test_dir}/test_app_snapshot"
+    "${test_dir}/test_app_snapshot"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Icomponents/bsp/src \
         tests/test_bsp_display_rounding.c components/bsp/src/bsp_display_rounding.c \
         -o "${test_dir}/test_bsp_display_rounding"
@@ -54,10 +72,14 @@ run_static_checks() {
         tests/test_bsp_audio_recovery.c components/bsp/src/bsp_es8311_sleep_check.c \
         -o "${test_dir}/test_bsp_audio_recovery"
     "${test_dir}/test_bsp_audio_recovery"
+    # --gc-sections is GNU-ld only; Apple's linker equivalent is -dead_strip.
+    local gc_sections
+    gc_sections="-Wl,--gc-sections"
+    if [[ "$(uname -s)" == "Darwin" ]]; then gc_sections="-Wl,-dead_strip"; fi
     for demo in audio low_power ble wifi; do
         "${CC:-cc}" -std=c11 -Wall -Wextra -Werror \
             -ffunction-sections -fdata-sections -Itests/demo_stubs -Imain \
-            "tests/test_demo_${demo}_runtime.c" -Wl,--gc-sections \
+            "tests/test_demo_${demo}_runtime.c" ${gc_sections} \
             -o "${test_dir}/test_demo_${demo}_runtime"
         "${test_dir}/test_demo_${demo}_runtime"
     done
