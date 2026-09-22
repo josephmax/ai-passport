@@ -85,7 +85,10 @@ static void deep_sleep_now(void) {
     esp_err_t err = esp_deep_sleep_enable_gpio_wakeup(1ULL << BTN_WAKE_GPIO,
                                                       ESP_GPIO_WAKEUP_GPIO_LOW);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "深睡唤醒源配置失败: %s", esp_err_to_name(err));
+        // 唤醒源没配成绝不入睡:睡死无唤醒的设备"看起来像砖"。
+        // 宁可亏掉深睡的省电,保住任何时刻可按键唤醒。
+        ESP_LOGE(TAG, "深睡唤醒源配置失败,放弃深睡: %s", esp_err_to_name(err));
+        return;
     }
     // CW2017 与 ES8311 共线,先电量计后 codec;失败仅告警继续(既定策略)。
     (void)bsp_battery_sleep();
