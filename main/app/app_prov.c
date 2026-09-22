@@ -18,6 +18,7 @@
 #include "lwip/sockets.h"
 
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 
 static const char *TAG = "prov";
@@ -130,13 +131,17 @@ static httpd_uri_t URI_GET = { .uri = "/", .method = HTTP_GET, .handler = portal
 static httpd_uri_t URI_POST = { .uri = "/save", .method = HTTP_POST, .handler = portal_post };
 
 // ---- 最小 DNS:所有 A 查询应答本机 AP IP(captive 探测域名全劫持) ----
+// fd 由启动参数传入:任务只操作自己的 socket,dns_stop 关掉 fd 后
+// recvfrom 报错,任务自行退出 —— 不 vTaskDelete,避免对已自删任务
+// 双重删除的竞态。
 static void dns_task(void *arg) {
+    int fd = (int)(intptr_t)arg;
     (void)arg;
     uint8_t pkt[160];
     struct sockaddr_in src;
     for (;;) {
         socklen_t slen = sizeof(src);
-        int n = recvfrom(s_dns_sock, pkt, sizeof(pkt), 0,
+        int n = recvfrom(fd, pkt, sizeof(pkt), 0,
                          (struct sockaddr *)&src, &slen);
         if (n < 0) break;   // socket 已关,退出
         if (n < 12) continue;
@@ -153,8 +158,7 @@ static void dns_task(void *arg) {
         r[12] = 192; r[13] = 168; r[14] = 4; r[15] = AP_IP_LAST_OCTET;
         pkt[2] |= 0x80;
         pkt[7] = 1;
-        sendto(s_dns_sock, pkt, q_end + 16, 0,
-               (struct sockaddr *)&src, sizeof(src));
+        sendto(fd, pkt, q_end + 16, 0, (struct sockaddr *)&src, sizeof(src));
     }
     vTaskDelete(NULL);
 }
@@ -164,10 +168,7 @@ static void dns_stop(void) {
         shutdown(s_dns_sock, 0);
         closesocket(s_dns_sock);
         s_dns_sock = -1;
-    }
-    if (s_dns_task) {
-        vTaskDelete(s_dns_task);   // recvfrom 无超时,直接回收
-        s_dns_task = NULL;
+        s_dns_task = NULL;   // 任务感知 fd 关闭后自行退出
     }
 }
 
@@ -274,7 +275,8 @@ bool app_prov_start(void) {
         int reuse = 1;
         setsockopt(s_dns_sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
         if (bind(s_dns_sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
-            xTaskCreate(dns_task, "prov_dns", 2560, NULL, 4, &s_dns_task);
+            xTaskCreate(dns_task, "prov_dns", 2560,
+                        (void *)(intptr_t)s_dns_sock, 4, &s_dns_task);
         } else {
             dns_stop();
         }

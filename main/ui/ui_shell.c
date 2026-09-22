@@ -131,18 +131,21 @@ static void process_input(const input_event_t *in) {
 
     // 输入任务不是 LVGL 任务:所有触达 LVGL 的页面键处理必须持锁
     // (仓库硬规则),否则与渲染任务竞态可能损坏 LVGL 池。
+    // 页面消费了事件也必须先解锁再返回:此前持锁 return 会永久占住
+    // LVGL 锁,渲染任务随之饿死 → 看门狗复位(真机"动不动就死"根因)。
     if (!bsp_lvgl_lock(500)) return;
 
+    bool consumed = false;
     if (s_page == PAGE_DASH) {
-        if (ui_dash_key(ok_short, ok_long, up, down)) return;
+        consumed = ui_dash_key(ok_short, ok_long, up, down);
     } else if (s_page == PAGE_PET) {
-        if (ok_short) { pet_ok_short(); return; }
-        if (ok_long) { pet_ok_long(); return; }
+        if (ok_short) { pet_ok_short(); consumed = true; }
+        else if (ok_long) { pet_ok_long(); consumed = true; }
     } else {
         // 设置页:一级上下留给切页(由末尾分支处理),其余由页面层级消费。
-        if (ui_settings_key(ok_short, ok_long, up, down)) return;
+        consumed = ui_settings_key(ok_short, ok_long, up, down);
     }
-    if (up || down) {
+    if (!consumed && (up || down)) {
         set_page((page_t)((s_page + (up ? PAGE_COUNT - 1 : 1)) % PAGE_COUNT));
     }
     bsp_lvgl_unlock();

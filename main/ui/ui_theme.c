@@ -147,8 +147,16 @@ void ui_theme_hint_set(lv_obj_t *hint, const char *updown, const char *ok,
     char buf[96];
     size_t n = 0;
     buf[0] = '\0';
-    if (updown) n += (size_t)snprintf(buf + n, sizeof(buf) - n, "%s上/下：%s", n ? "，" : "", updown);
-    if (ok) n += (size_t)snprintf(buf + n, sizeof(buf) - n, "%sOK：%s", n ? "，" : "", ok);
+    // snprintf 截断时返回"本应写入"的长度,必须收敛到剩余空间,
+    // 否则 buf+n 越界、sizeof(buf)-n 下溢。
+    if (updown) {
+        int w = snprintf(buf + n, sizeof(buf) - n, "%s上/下：%s", n ? "，" : "", updown);
+        if (w > 0) n += (size_t)w < sizeof(buf) - n ? (size_t)w : sizeof(buf) - n - 1;
+    }
+    if (ok) {
+        int w = snprintf(buf + n, sizeof(buf) - n, "%sOK：%s", n ? "，" : "", ok);
+        if (w > 0) n += (size_t)w < sizeof(buf) - n ? (size_t)w : sizeof(buf) - n - 1;
+    }
     if (oklong) snprintf(buf + n, sizeof(buf) - n, "%s长按：%s", n ? "，" : "", oklong);
     lv_label_set_text(hint, buf);
 }

@@ -62,7 +62,7 @@ dependencies:
       type: service
     version: 1.22.3
   lvgl/lvgl:
-    component_hash: 7d82410747bbfb319531449749e940f440f8414f041f9eaba13f0d1dd7f58cdd
+    component_hash: d5e723db3a3feca71e34e333a6598b7624e3822577d374e1d44f0e18374952e1
     dependencies:
     - name: espressif/freetype
       registry_url: https://components.espressif.com
@@ -91,7 +91,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 9.6.0~1
+    version: 9.6.0
 direct_dependencies:
 - espressif/button
 - espressif/esp_codec_dev

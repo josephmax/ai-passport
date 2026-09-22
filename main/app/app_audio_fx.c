@@ -11,6 +11,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 static const char *TAG = "audio_fx";
 
@@ -34,13 +35,11 @@ static void play_pcm(const int16_t *pcm, size_t samples, uint8_t volume) {
     bsp_audio_set_volume(VOLUME_PERCENT[volume % 6]);
 
     int16_t chunk[CHUNK_SAMPLES];
+    // 音量只由 codec 侧(VOLUME_PERCENT)控制:若样本再按同比例缩放,
+    // 实际衰减是平方,听感明显偏小。
     while (samples > 0) {
         size_t n = samples < CHUNK_SAMPLES ? samples : CHUNK_SAMPLES;
-        for (size_t i = 0; i < n; i++) {
-            // 定点缩放:16bit 样本 × 档位百分比,饱和收敛。
-            int32_t v = (pcm[i] * VOLUME_PERCENT[volume % 6]) / 100;
-            chunk[i] = (int16_t)(v > 32767 ? 32767 : (v < -32768 ? -32768 : v));
-        }
+        memcpy(chunk, pcm, n * sizeof(int16_t));
         if (bsp_audio_write(chunk, n * sizeof(int16_t)) != ESP_OK) break;
         pcm += n;
         samples -= n;

@@ -93,6 +93,7 @@ static int install_embedded_bundle(void) {
             installed++;
         }
         r.p += data_len;
+        if (r.p > r.end) return -1;   // 损坏包:长度字段越过包尾,立即放弃
     }
     if (installed != count) return -1;
     ESP_LOGI(TAG, "默认素材包 v%u 安装完成(%d 文件)", version, installed);
@@ -269,7 +270,6 @@ static bool manifest_entry(const char *section, const char *name, int index,
         root = cJSON_ParseWithLength(s_manifest_buf, n);
     }
     if (!root) return false;
-    if (!root) return false;
 
     cJSON *node = cJSON_GetObjectItemCaseSensitive(root, section);
     if (index >= 0 && strcmp(section, "decorations") == 0) {
@@ -290,7 +290,8 @@ found:
         const cJSON *jw = cJSON_GetObjectItemCaseSensitive(node, "w");
         const cJSON *jh = cJSON_GetObjectItemCaseSensitive(node, "h");
         const cJSON *jfps = cJSON_GetObjectItemCaseSensitive(node, "fps");
-        if (cJSON_IsString(file) && file->valuestring) {
+        if (cJSON_IsString(file) && file->valuestring &&
+            cJSON_IsNumber(jw) && cJSON_IsNumber(jh)) {
             strncpy(file_out, file->valuestring, file_cap - 1);
             file_out[file_cap - 1] = '\0';
             *frames = cJSON_IsNumber(fr) ? (uint16_t)fr->valueint : 1;

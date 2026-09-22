@@ -253,8 +253,16 @@ static void do_sync(void) {
     s_busy = true;
     app_runtime_t *rt = app_runtime();
     app_net_cfg_t net;
-    if (!app_store_net(&net) || !net.device_token[0]) return;   // 未配对
-    if (!app_net_connected()) return;
+    // 早退也必须复位 s_busy:否则一次未配对/未联网的触发会让
+    // app_sync_busy() 永久为 true。
+    if (!app_store_net(&net) || !net.device_token[0]) {   // 未配对
+        s_busy = false;
+        return;
+    }
+    if (!app_net_connected()) {
+        s_busy = false;
+        return;
+    }
 
     rt->sync_in_progress = true;
     app_runtime_publish(APP_EVENT_SYNC_STATE);
