@@ -49,8 +49,12 @@ if ! curl --fail --location --silent --show-error --retry 3 --retry-all-errors \
     gh release download "v${version}" --repo rhysd/actionlint \
         --pattern "${archive_name}" --dir "${destination}"
 fi
-if command -v sha256sum >/dev/null 2>&1; then
-    printf '%s  %s\n' "${checksum}" "${archive_path}" | sha256sum --check --status
+# macOS ships a BSD sha256sum without GNU long options; only use it when the
+# GNU-style check actually works, otherwise fall back to shasum.
+if command -v sha256sum >/dev/null 2>&1 && \
+   printf '%s  %s\n' "${checksum}" "${archive_path}" | \
+       sha256sum --check --status >/dev/null 2>&1; then
+    :
 elif command -v shasum >/dev/null 2>&1; then
     [[ "$(shasum -a 256 "${archive_path}" | awk '{print $1}')" == "${checksum}" ]]
 else
