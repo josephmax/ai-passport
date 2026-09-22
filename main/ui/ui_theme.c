@@ -96,7 +96,7 @@ void ui_theme_page_dots(lv_obj_t *parent, int active) {    static lv_obj_t *dots
     static lv_obj_t *holder;
     if (!holder || lv_obj_get_parent(holder) != parent) {
         holder = lv_obj_create(parent);
-        lv_obj_set_pos(holder, 96, 302);
+        lv_obj_set_pos(holder, 96, 7);
         lv_obj_set_size(holder, 48, 12);
         lv_obj_set_style_bg_opa(holder, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(holder, 0, 0);
@@ -124,4 +124,29 @@ void ui_theme_brightness_apply(uint8_t level) {
     if (level < 1) level = 1;
     if (level > 5) level = 5;
     bsp_display_backlight(MAP[level]);
+}
+
+
+// 底部按键提示栏:高度与样式全应用统一,只有内容随场景变。
+lv_obj_t *ui_theme_hint_create(lv_obj_t *parent) {
+    lv_obj_t *hint = lv_label_create(parent);
+    lv_obj_set_style_text_font(hint, &app_font_12, 0);
+    lv_obj_set_style_text_color(hint, lv_color_hex(UI_INK_DIM), 0);
+    lv_obj_set_pos(hint, 0, 304);
+    lv_obj_set_width(hint, 240);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_CLIP);
+    return hint;
+}
+
+void ui_theme_hint_set(lv_obj_t *hint, const char *updown, const char *ok,
+                       const char *oklong) {
+    if (!hint) return;
+    char buf[96];
+    size_t n = 0;
+    buf[0] = '\0';
+    if (updown) n += (size_t)snprintf(buf + n, sizeof(buf) - n, "%s上/下：%s", n ? "，" : "", updown);
+    if (ok) n += (size_t)snprintf(buf + n, sizeof(buf) - n, "%sOK：%s", n ? "，" : "", ok);
+    if (oklong) snprintf(buf + n, sizeof(buf) - n, "%s长按：%s", n ? "，" : "", oklong);
+    lv_label_set_text(hint, buf);
 }

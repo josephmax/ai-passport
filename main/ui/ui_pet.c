@@ -32,6 +32,7 @@ typedef enum { ACT_RUN = 0, ACT_FIGHT, ACT_SLEEP, ACT_VICTORY, ACT_NONE } act_t;
 
 static ui_pet_t *s_pet;
 static ui_status_bar_t s_status;
+static lv_obj_t *s_hint;
 
 // 地图:单份数据,两个 image 拼接循环。
 static app_asset_frames_t s_map;
@@ -385,11 +386,13 @@ ui_pet_t *ui_pet_create(void) {
     s_act_current = ACT_NONE;
     set_action(ACT_RUN);
 
-    // 底部信息条。
+    // 底部信息条(让出统一提示栏的高度)与按键提示栏。
     s_info_bar = lv_label_create(scr);
     lv_obj_set_style_text_font(s_info_bar, &app_font_12, 0);
     lv_obj_set_style_text_color(s_info_bar, lv_color_hex(UI_INK_DIM), 0);
-    lv_obj_align(s_info_bar, LV_ALIGN_BOTTOM_MID, 0, -8);
+    lv_obj_align(s_info_bar, LV_ALIGN_BOTTOM_MID, 0, -26);
+    s_hint = ui_theme_hint_create(scr);
+    ui_theme_hint_set(s_hint, "切页", "番茄", "取消");
 
     ui_pet_refresh();
     s_timer = lv_timer_create(tick, TICK_MS, NULL);

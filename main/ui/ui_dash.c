@@ -9,6 +9,7 @@
 #include "app_runtime.h"
 #include "app_snapshot.h"
 #include "ui_theme.h"
+// 提示栏文案由 ui_theme_hint_set 组装
 
 #include <stdio.h>
 #include <string.h>
@@ -26,6 +27,7 @@ typedef struct {
 
 static ui_dash_t *s_dash;
 static ui_status_bar_t s_status;
+static lv_obj_t *s_hint;
 static card_widgets_t s_cards[DIM_COUNT];
 static lv_obj_t *s_main_view;
 static lv_obj_t *s_drill_view;
@@ -165,6 +167,10 @@ static void refresh_drill(void) {
 void ui_dash_refresh(void) {
     if (!s_dash) return;
     ui_theme_status_bar_refresh(&s_status);
+    ui_theme_hint_set(s_hint,
+                      s_in_drill ? "切换维度" : "切页",
+                      s_in_drill ? NULL : "下钻",
+                      s_in_drill ? "返回" : NULL);
     if (s_in_drill) {
         refresh_drill();
     } else {
@@ -218,6 +224,7 @@ ui_dash_t *ui_dash_create(void) {
     s_dash->screen = scr;
 
     ui_theme_status_bar_create(scr, &s_status);
+    s_hint = ui_theme_hint_create(scr);
 
     // 主界面:三卡竖排,各占约 1/3 屏(标题行下方 30..296)。
     s_main_view = lv_obj_create(scr);
@@ -282,12 +289,6 @@ ui_dash_t *ui_dash_create(void) {
         lv_obj_align(lab, LV_ALIGN_LEFT_MID, 8, 0);
         s_drill_rows[i] = lab;
     }
-    lv_obj_t *hint = lv_label_create(s_drill_view);
-    lv_obj_set_style_text_font(hint, &app_font_12, 0);
-    lv_obj_set_style_text_color(hint, lv_color_hex(UI_INK_DIM), 0);
-    lv_label_set_text(hint, "上下切换 · 长按返回");
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -4);
-
     lv_obj_add_flag(s_drill_view, LV_OBJ_FLAG_HIDDEN);
     ui_dash_refresh();
     return s_dash;

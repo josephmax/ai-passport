@@ -42,7 +42,7 @@ static lv_obj_t *s_rest_labels[2];
 static lv_obj_t *s_qr;
 static lv_obj_t *s_url_label;
 static lv_obj_t *s_token_label;
-static lv_obj_t *s_hint;
+static lv_obj_t *s_hint_label;   // 底部统一按键提示栏
 
 static const uint16_t AUTO_OFF_STEPS[] = { 15, 30, 60, 120 };
 
@@ -105,9 +105,16 @@ void ui_settings_refresh(void) {
         // 一级态整页降透明度,提示当前上下键在切页
         lv_obj_set_style_bg_opa(s_rows[i], s_entered ? LV_OPA_COVER : LV_OPA_60, 0);
     }
-    if (s_hint) {
-        lv_label_set_text(s_hint, s_entered ? "上下选择 · 长按返回"
-                                            : "OK 进入设置");
+    if (s_hint_label) {
+        switch (s_sub_mode) {
+        case SUB_REST: ui_theme_hint_set(s_hint_label, "起/止", "+30分", "返回"); break;
+        case SUB_CONNECT: ui_theme_hint_set(s_hint_label, NULL, NULL, "返回"); break;
+        case SUB_PROV: ui_theme_hint_set(s_hint_label, NULL, NULL, "退出配网"); break;
+        default:
+            if (s_entered) ui_theme_hint_set(s_hint_label, "选择", "调整", "返回");
+            else ui_theme_hint_set(s_hint_label, "切页", "进入", NULL);
+            break;
+        }
     }
     refresh_values();
 }
@@ -271,10 +278,12 @@ ui_settings_t *ui_settings_create(void) {
     lv_obj_set_style_text_color(title, lv_color_hex(UI_INK), 0);
     lv_label_set_text(title, "设置");
     lv_obj_set_pos(title, 12, 26);
-    s_hint = lv_label_create(scr);
-    lv_obj_set_style_text_font(s_hint, &app_font_12, 0);
-    lv_obj_set_style_text_color(s_hint, lv_color_hex(UI_INK_DIM), 0);
-    lv_obj_align(s_hint, LV_ALIGN_TOP_RIGHT, -12, 34);
+    lv_obj_t *enter_hint = lv_label_create(scr);
+    lv_obj_set_style_text_font(enter_hint, &app_font_12, 0);
+    lv_obj_set_style_text_color(enter_hint, lv_color_hex(UI_INK_DIM), 0);
+    lv_obj_align(enter_hint, LV_ALIGN_TOP_RIGHT, -12, 34);
+    lv_obj_add_flag(enter_hint, LV_OBJ_FLAG_HIDDEN);   // 由底部提示栏统一承担
+    s_hint_label = ui_theme_hint_create(scr);
 
     static const char *NAMES[ITEM_COUNT] = {
         "亮度", "音量", "自动息屏", "作息时间", "Wi-Fi 配网", "连接手机", "立即同步",
