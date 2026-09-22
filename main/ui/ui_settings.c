@@ -107,6 +107,12 @@ static void refresh_values(void) {
 
 static void set_mode(set_mode_t mode) {
     ESP_LOGI(TAG, "设置模式 %d -> %d", (int)s_mode, (int)mode);
+#if LV_USE_QRCODE
+    if (mode != SET_CONNECT && s_qr) {
+        lv_obj_delete(s_qr);   // 归还池内存
+        s_qr = NULL;
+    }
+#endif
     s_mode = mode;
     lv_obj_add_flag(s_top_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
@@ -213,6 +219,15 @@ static void rest_refresh(void) {
 
 static void connect_refresh(void) {
     app_runtime_t *rt = app_runtime();
+#if LV_USE_QRCODE
+    if (!s_qr) {
+        s_qr = lv_qrcode_create(s_sub_view);
+        lv_qrcode_set_size(s_qr, 96);
+        lv_qrcode_set_dark_color(s_qr, lv_color_hex(0x0E1626));
+        lv_qrcode_set_light_color(s_qr, lv_color_hex(0xFFFFFF));
+        lv_obj_set_pos(s_qr, 72, 26);
+    }
+#endif
     if (rt->service_url[0]) {
         lv_label_set_text(s_url_label, rt->service_url);
 #if LV_USE_QRCODE
@@ -420,14 +435,9 @@ ui_settings_t *ui_settings_create(void) {
         lv_obj_set_style_text_color(s_rest_labels[i], lv_color_hex(UI_INK), 0);
         lv_obj_set_pos(s_rest_labels[i], 24, 40 + i * 56);
     }
+    // 二维码画布(96px≈18KB)懒创建:常驻曾把 48KB LVGL 池挤爆,
+    // 进入设置列表首次渲染时绘制任务无内存可分 → 渲染任务卡死。
     s_qr = NULL;
-#if LV_USE_QRCODE
-    s_qr = lv_qrcode_create(s_sub_view);
-    lv_qrcode_set_size(s_qr, 110);
-    lv_qrcode_set_dark_color(s_qr, lv_color_hex(0x0E1626));
-    lv_qrcode_set_light_color(s_qr, lv_color_hex(0xFFFFFF));
-    lv_obj_set_pos(s_qr, 65, 30);
-#endif
     s_url_label = lv_label_create(s_sub_view);
     lv_obj_set_style_text_font(s_url_label, &app_font_12, 0);
     lv_obj_set_style_text_color(s_url_label, lv_color_hex(UI_INK), 0);
