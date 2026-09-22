@@ -10,6 +10,7 @@ typedef struct {
 
 // 构建页面(持 LVGL 锁调用)。三卡主界面 + 下钻详情两套视图。
 ui_dash_t *ui_dash_create(void);
+void ui_dash_destroy(void);
 
 // UP/DOWN 已被 Shell 用于切页;下钻页的 UP/DOWN(三项详情间切换)由此处理。
 // 返回 true 表示事件已消费(下钻页内切换)。

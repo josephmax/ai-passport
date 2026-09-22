@@ -6,6 +6,7 @@
 #include "ui_shell.h"
 
 #include "app_audio_fx.h"
+#include "app_debug.h"
 #include "app_focus.h"
 #include "app_power.h"
 #include "app_runtime.h"
@@ -53,9 +54,32 @@ static int64_t wall_now_ms(void) {
     return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
+// 切换即销毁重建(规格 §10):任一时刻 LVGL 池里只有一页的控件。
+// 规格 §10:切换销毁旧屏再建新屏;宠物页例外常驻(控件固定且少,
+// 保留动画连续性)。任一时刻池内至多 = 宠物页 + 一个非宠物页。
+static void destroy_page(page_t page) {
+    if (page == PAGE_DASH) ui_dash_destroy();
+    else if (page == PAGE_SETTINGS) ui_settings_destroy();
+    // PAGE_PET 常驻,不销毁
+}
+
+static void create_page(page_t page) {
+    if (page == PAGE_DASH) ui_dash_create();
+    else if (page == PAGE_PET) ui_pet_create();
+    else ui_settings_create();
+}
+
 static void set_page(page_t page) {
+    if (page == s_page && (page == PAGE_DASH ? ui_dash_screen()
+                            : page == PAGE_PET ? ui_pet_screen()
+                                               : ui_settings_screen())) {
+        return;   // 已在该页
+    }
+    ESP_LOGI(TAG, "切页 %d -> %d", (int)s_page, (int)page);
+    if (s_page < PAGE_COUNT) destroy_page(s_page);
     s_page = page;
     s_rtc_page = (uint8_t)page;
+    create_page(page);   // 宠物页 create 幂等:已常驻则直接复用
     lv_obj_t *scr = page == PAGE_DASH ? ui_dash_screen()
                   : page == PAGE_PET ? ui_pet_screen()
                                      : ui_settings_screen();
@@ -191,9 +215,7 @@ static void second_tick(lv_timer_t *t) {
 void ui_shell_init(void) {
     // 三页常驻创建;宠物页素材最重,失败时页面内部纯色降级。
     if (bsp_lvgl_lock(2000)) {
-        ui_dash_create();
-        ui_settings_create();
-        ui_pet_create();
+        s_page = PAGE_COUNT;   // 令 set_page 走"无旧页可销毁"分支
         page_t start = PAGE_DASH;
         if (s_rtc_magic == RTC_MAGIC &&
             esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO) {
@@ -211,6 +233,7 @@ void ui_shell_init(void) {
     TaskHandle_t task = NULL;
     if (s_input_queue &&
         xTaskCreate(input_task, "shell_input", 4096, NULL, 5, &task) == pdPASS) {
+        app_debug_register("shell_input", task);
         esp_err_t err = bsp_button_init(on_key, NULL);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "按键初始化失败: %s", esp_err_to_name(err));

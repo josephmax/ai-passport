@@ -116,7 +116,7 @@ static bool load_action(act_t act) {
 }
 
 static void set_action(act_t act) {
-    if (act == s_act_current) return;
+    if (act == s_act_current || !s_pet_img) return;
     bool loaded = load_action(act);
     s_act_current = act;   // 失败也记账:不重试,无帧时隐藏,避免每帧刷错误
     s_frame_idx = 0;
@@ -217,7 +217,7 @@ static void apply_tint(app_tod_t tod) {
 // ---- 主节拍 ----
 static void tick(lv_timer_t *t) {
     (void)t;
-    if (s_paused) return;
+    if (s_paused || !s_pet || !s_pet_img) return;
     app_runtime_t *rt = app_runtime();
 
     if (s_victory_active && now_ms() >= s_victory_until_ms) {
@@ -276,13 +276,14 @@ static void tick(lv_timer_t *t) {
 }
 
 void ui_pet_on_victory(void) {
+    if (!s_pet) return;
     s_victory_active = true;
     s_victory_until_ms = now_ms() + 2200;
     set_action(ACT_VICTORY);
 }
 
 void ui_pet_refresh(void) {
-    if (!s_pet) return;
+    if (!s_pet || !s_info_bar) return;
     app_runtime_t *rt = app_runtime();
     ui_theme_status_bar_refresh(&s_status);
 
@@ -302,6 +303,28 @@ void ui_pet_refresh(void) {
 
 void ui_pet_set_paused(bool paused) {
     s_paused = paused;
+}
+
+void ui_pet_destroy(void) {
+    if (!s_pet) return;
+    if (s_timer) {
+        lv_timer_delete(s_timer);
+        s_timer = NULL;
+    }
+    lv_obj_delete(s_pet->screen);
+    lv_free(s_pet);
+    s_pet = NULL;
+    s_pet_img = NULL;
+    for (int i = 0; i < 2; i++) s_map_img[i] = NULL;
+    for (int i = 0; i < WEATHER_SPRITES; i++) s_wx_img[i] = NULL;
+    s_deco_img = NULL;
+    s_clock_label = NULL;
+    s_info_bar = NULL;
+    s_lv_label = NULL;
+    s_lv_bar = NULL;
+    for (int i = 0; i < APP_FOCUS_MAX_UNITS; i++) s_unit_dots[i] = NULL;
+    s_tint = NULL;
+    // 素材(s_map/s_act/s_act_dsc/s_wx/s_deco)保留:重建免重读。
 }
 
 ui_pet_t *ui_pet_create(void) {

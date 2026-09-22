@@ -1,6 +1,7 @@
 // main/app/app_audio_fx.c —— 音效实现:EMBED PCM → 音量缩放 → ES8311。
 #include "app_audio_fx.h"
 
+#include "app_debug.h"
 #include "app_runtime.h"
 #include "bsp_audio.h"
 #include "esp_log.h"
@@ -80,7 +81,9 @@ bool app_audio_fx_init(void) {
     (void)bsp_audio_sleep();   // 待机,首次播放再唤醒
     s_queue = xQueueCreate(2, sizeof(app_fx_t));
     if (!s_queue) return false;
-    if (xTaskCreate(fx_task, "audio_fx", 3072, NULL, 4, &s_task) != pdPASS) {
+    bool ok = xTaskCreate(fx_task, "audio_fx", 3072, NULL, 4, &s_task) == pdPASS;
+    if (ok) app_debug_register("audio_fx", s_task);
+    if (!ok) {
         vQueueDelete(s_queue);
         s_queue = NULL;
         return false;

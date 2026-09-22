@@ -1,6 +1,7 @@
 // main/app/app_power.c —— 电源管理实现。
 #include "app_power.h"
 
+#include "app_debug.h"
 #include "app_focus.h"
 #include "app_prov.h"
 #include "app_runtime.h"
@@ -16,6 +17,7 @@
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lvgl.h"
 #include "sys/time.h"
 
 static const char *TAG = "power";
@@ -121,11 +123,9 @@ static void power_task(void *arg) {
                 app_runtime()->battery_soc = bsp_battery_soc();
                 last_soc_ms = now0;
             }
-            // 心跳日志:真机上区分"LVGL 卡死"与"整机卡死"的观测锚点。
             if (now0 - last_beat_ms >= 10000) {
                 last_beat_ms = now0;
-                ESP_LOGI(TAG, "心跳 %ds 堆剩余=%u", (int)(now0 / 1000),
-                         (unsigned)heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
+                app_debug_heartbeat();   // 统一观测点:见 app_debug.c
             }
         }
         app_runtime_t *rt = app_runtime();

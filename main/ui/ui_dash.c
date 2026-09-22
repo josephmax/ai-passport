@@ -181,6 +181,16 @@ void ui_dash_refresh(void) {
     }
 }
 
+void ui_dash_destroy(void) {
+    if (!s_dash) return;
+    lv_obj_delete(s_dash->screen);
+    lv_free(s_dash);
+    s_dash = NULL;
+    memset(s_cards, 0, sizeof(s_cards));
+    s_in_drill = false;
+    s_selected = DIM_WEEKLY;
+}
+
 static void enter_drill(dim_t dim) {
     s_drill_dim = dim;
     s_selected = dim;

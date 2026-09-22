@@ -9,6 +9,7 @@ typedef struct {
 } ui_settings_t;
 
 ui_settings_t *ui_settings_create(void);
+void ui_settings_destroy(void);
 lv_obj_t *ui_settings_screen(void);
 
 // 本页的页点指示器(Shell 切页时置激活态)。

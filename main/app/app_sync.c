@@ -2,6 +2,7 @@
 #include "app_sync.h"
 
 #include "app_net.h"
+#include "app_debug.h"
 #include "app_runtime.h"
 #include "app_service.h"
 #include "app_snapshot.h"
@@ -332,6 +333,7 @@ bool app_sync_init(void) {
     if (xTaskCreate(sync_task, "sync", 6144, NULL, 3, &s_task) != pdPASS) {
         return false;
     }
+    app_debug_register("sync", s_task);
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                                on_got_ip, NULL));
     return true;

@@ -9,6 +9,10 @@ typedef struct {
 } ui_pet_t;
 
 ui_pet_t *ui_pet_create(void);
+// 销毁页面控件(素材堆缓冲与已加载帧保留,重建不重读);
+// 规格 §10:页面切换销毁旧屏再建新屏,三页常驻曾把 48KB LVGL 池
+// 挤到水位 95%+,所有图片渲染断供(真机现象:仅文字无图)。
+void ui_pet_destroy(void);
 lv_obj_t *ui_pet_screen(void);
 
 // 本页的页点指示器(Shell 切页时置激活态)。

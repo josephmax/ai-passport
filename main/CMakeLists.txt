@@ -17,6 +17,7 @@ idf_component_register(
          "app/app_net.c"
          "app/app_sync.c"
          "app/app_prov.c"
+         "app/app_debug.c"
          "app/app_audio_fx.c"
          "ui/ui_theme.c"
          "ui/ui_dash.c"

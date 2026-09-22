@@ -222,10 +222,10 @@ static void connect_refresh(void) {
 #if LV_USE_QRCODE
     if (!s_qr) {
         s_qr = lv_qrcode_create(s_sub_view);
-        lv_qrcode_set_size(s_qr, 96);
+        lv_qrcode_set_size(s_qr, 88);
         lv_qrcode_set_dark_color(s_qr, lv_color_hex(0x0E1626));
         lv_qrcode_set_light_color(s_qr, lv_color_hex(0xFFFFFF));
-        lv_obj_set_pos(s_qr, 72, 26);
+        lv_obj_set_pos(s_qr, 76, 26);
     }
 #endif
     if (rt->service_url[0]) {
@@ -352,6 +352,15 @@ bool ui_settings_key(bool ok_short, bool ok_long, bool up, bool down) {
     default:
         return false;
     }
+}
+
+void ui_settings_destroy(void) {
+    if (!s_settings) return;
+    lv_obj_delete(s_settings->screen);
+    lv_free(s_settings);
+    s_settings = NULL;
+    s_qr = NULL;          // 画布随屏幕销毁
+    s_mode = SET_TOP;     // 回到一级
 }
 
 ui_settings_t *ui_settings_create(void) {

@@ -5,6 +5,7 @@
 // → 周期服务 → 电源管理(息屏/浅睡/深睡)。
 #include "app_audio_fx.h"
 #include "app_assets.h"
+#include "app_debug.h"
 #include "app_focus.h"
 #include "app_net.h"
 #include "app_power.h"
@@ -78,6 +79,7 @@ static void runtime_restore(void) {
 
 void app_main(void) {
     ESP_LOGI(TAG, "多合一挂坠启动(wakeup=%d)", (int)esp_sleep_get_wakeup_cause());
+    app_debug_boot_report();
 
     // 事件循环必须先于任何 publish/注册(app_runtime/ui_shell 都依赖)。
     ESP_ERROR_CHECK(esp_event_loop_create_default());
