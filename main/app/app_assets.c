@@ -8,12 +8,13 @@
 #include "cJSON.h"
 
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 
 static const char *TAG = "assets";
-static const char *MOUNT = "/assets";
-static const char *PART_LABEL = "assets";
+#define MOUNT "/assets"
+#define PART_LABEL "assets"
 
 // 固件内嵌默认包(EMBED_FILES 注入的符号)。
 extern const uint8_t pendant_default_bundle_start[] asm("_binary_pendant_default_bundle_bin_start");
@@ -91,9 +92,8 @@ static int install_embedded_bundle(void) {
 bool app_assets_init(void) {
     esp_vfs_littlefs_conf_t conf = {
         .partition_label = PART_LABEL,
-        .mount_point = MOUNT,
+        .base_path = MOUNT,
         .format_if_mount_failed = true,
-        .dont_mount = false,
     };
     esp_err_t err = esp_vfs_littlefs_register(&conf);
     if (err != ESP_OK) {
@@ -101,7 +101,7 @@ bool app_assets_init(void) {
         return false;
     }
     size_t total = 0, used = 0;
-    esp_littlefs_info(MOUNT, &total, &used);
+    esp_littlefs_info(PART_LABEL, &total, &used);
     ESP_LOGI(TAG, "素材区: %u/%u KiB", (unsigned)(used / 1024), (unsigned)(total / 1024));
 
     int installed = app_assets_installed_version();

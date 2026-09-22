@@ -23,6 +23,9 @@ static inline int app_time_min_of_day(int64_t local_epoch_s) {
     return (int)((local_epoch_s % 86400) / 60);
 }
 
+// 时钟视为可信的最小历元秒(2020-01-01)。低于此值不跑日界/时段逻辑。
+#define APP_TIME_PLAUSIBLE_S 1577836800LL
+
 // 作息窗口(规格 §5.4,默认 23:00–次日 8:00,设置页 ±30 分钟步进)。
 typedef struct {
     uint16_t start_min;   // 起始分钟(含)

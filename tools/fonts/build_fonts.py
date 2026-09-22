@@ -28,6 +28,10 @@ BASE = (
     + "·—…～°％：；！？、。，“”‘’（）《》【】"
 )
 
+# 24px 大字号只用于页面/卡片标题 —— 单独的小字符集控制 Flash 体积
+# (全量 686 字 24px 约 1.1MB,远超规格 100–200KB 字体预算)。
+TITLE_GLYPHS = "设置仪表盘宠物周额度小时本Token起始结束连接手机返回"
+
 # CJK 与全角区段(扫描目标)
 CJK_RANGES = (
     (0x2E80, 0x9FFF),    # CJK 部首/汉字
@@ -36,12 +40,19 @@ CJK_RANGES = (
 )
 
 
+def strip_comments(text):
+    """去掉 // 与 /* */ 注释,只留代码(字符串字面量保留)。"""
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    text = re.sub(r"//[^\n]*", " ", text)
+    return text
+
+
 def scan_sources():
     chars = set()
     for path in (ROOT / "main").rglob("*"):
         if path.suffix not in (".c", ".h"):
             continue
-        text = path.read_text(encoding="utf-8")
+        text = strip_comments(path.read_text(encoding="utf-8"))
         for ch in text:
             cp = ord(ch)
             if any(lo <= cp <= hi for lo, hi in CJK_RANGES):
@@ -79,11 +90,12 @@ def build_size(size, glyphs):
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     glyphs = set(BASE) | scan_sources()
-    print(f"共 {len(glyphs)} 个字符(基础 {len(set(BASE))} + 源码扫描 "
-          f"{len(glyphs - set(BASE))})")
-    check_coverage(glyphs)
-    for size in (12, 24):
-        build_size(size, glyphs)
+    titles = set(TITLE_GLYPHS) | set(c for c in BASE if ord(c) < 0x80)
+    print(f"正文 {len(glyphs)} 字符(基础 {len(set(BASE))} + 源码扫描 "
+          f"{len(glyphs - set(BASE))});标题 {len(titles)} 字符")
+    check_coverage(glyphs | titles)
+    build_size(12, glyphs)
+    build_size(24, titles)
     print("字体生成完成 -> main/fonts/")
 
 

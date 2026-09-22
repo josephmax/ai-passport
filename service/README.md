@@ -1,0 +1,219 @@
+<p align="right">
+  <a href="README.zh_CN.md">简体中文</a> · <strong>English</strong>
+</p>
+
+# AI Passport Local Service
+
+Self-hosted backend for the AI Passport multi-pendant (see
+[`docs/specs/2026-09-22-multi-pendant-app.md`](../docs/specs/2026-09-22-multi-pendant-app.md) and
+[`docs/specs/2026-09-22-config-portal.md`](../docs/specs/2026-09-22-config-portal.md)):
+collects Coding-account usage, aggregates the device usage snapshot, transcodes
+pet skin PNGs to RGB565 asset bundles, forwards weather, and hosts the mobile
+config portal. The device talks only to this service (ADR-0001); PNG→RGB565
+transcoding happens server-side (ADR-0004).
+
+- Runtime: Node.js ≥ 22, TypeScript (strict), single-process Fastify + sharp.
+- Scope: P1 (Claude/GLM/DeepSeek collectors, ChatGPT is a P2 placeholder).
+
+## Install
+
+```bash
+cd service
+npm install            # add --registry=https://registry.npmmirror.com if the default registry is slow
+cp .env.example .env   # then edit PORTAL_PASSWORD / SESSION_SECRET
+npm run build          # tsc -> dist/
+```
+
+## Run
+
+```bash
+npm start              # node dist/index.js
+npm run dev            # tsx watch src/index.ts (auto-reload)
+npm test               # node:test unit suite (pure logic only)
+npm run smoke          # boots the server briefly and exercises pair/snapshot/bundle
+npm run gen:placeholder # generate + inspect the default placeholder bundle v1
+```
+
+On first start, if no asset bundle has ever been published, the service
+auto-publishes a code-generated **placeholder bundle v1** (running figure /
+sword-fight / moon-sleep / trophy-victory actions, gradient map strip, bush
+decoration, rain/snow sprites) so a fresh device can download v1 out of the box.
+
+## Configuration
+
+Environment (`.env`, see `.env.example`):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PORT` | `3000` | HTTP port (device API + portal share it) |
+| `HOST` | `0.0.0.0` | Bind address; must be reachable from the device and phone |
+| `PORTAL_PASSWORD` | — | Config-portal login password (required; without it the portal is disabled, device API unaffected) |
+| `SESSION_SECRET` | ephemeral | Cookie-signing secret (set it to keep logins across restarts) |
+| `CLAUDE_PROJECTS_PATH` | `~/.claude/projects` | Claude Code session-log directory |
+| `SNAPSHOT_REFRESH_MINUTES` | `10` | Background snapshot refresh interval |
+| `DATA_DIR` | `service/data` | Runtime data directory |
+
+Runtime settings live in `data/config.json` (created with defaults on first
+run). **The quota caps are defaults, not facts** — adjust them to your plan:
+
+```jsonc
+{
+  "primaryAccount": "claude",        // which account the device dashboard shows first
+  "city": "shanghai",                // built-in city table (33 Chinese cities)
+  "customLat": null, "customLon": null, // overrides the city when both set
+  "weeklyTokenBudget": null,         // null = device shows the plain number
+  "claude": {
+    "label": "Claude",
+    "weeklyCapHours": 140,           // weekly cap (spec example default)
+    "rolling5hCapHours": 36,         // 5h-window cap (spec example default)
+    "projectsPath": null             // null = ~/.claude/projects (or CLAUDE_PROJECTS_PATH)
+  },
+  "glm":     { "label": "GLM",      "codingPlanUrl": "https://open.bigmodel.cn/api/paas/openapi/resource/coding-plan" },
+  "deepseek":{ "label": "DeepSeek", "balanceUrl": "https://api.deepseek.com/user/balance" }
+}
+```
+
+Everything in `data/config.json` can also be changed from the portal
+(preferences/accounts pages) except the caps and labels, which are file-only.
+
+### API keys (P1 security note)
+
+GLM/DeepSeek API keys entered in the portal are stored **in plaintext** at
+`data/keys.json` (file mode 0600). This is an accepted P1 trade-off: the
+service is meant to run on your own machine, LAN-only. Anyone with file access
+to the host (or a copy of `data/`) can read the keys; the portal only ever
+echoes the last 4 characters. Encrypt at rest before exposing the host beyond
+fully trusted users.
+
+## Device API
+
+| Endpoint | Auth | Description |
+| --- | --- | --- |
+| `POST /api/pair` | pairing code | Body `{"code":"123456","deviceName":"..."}`. 6-digit one-shot code (10 min TTL, generated in the portal). Success: `200 {"token":"<32hex>"}`; wrong/expired/used code: `403`; missing `deviceName`: `400`. |
+| `GET /api/snapshot` | `X-Device-Token` header | The usage snapshot (below). `401` on bad/revoked token. Updates the device's last-sync time. |
+| `GET /assets/bundle_v{N}.bin` | none (LAN, version-gated) | Published APB1 asset bundle. `404` if that version was never published. |
+| `GET /api/health` | none | Liveness probe. |
+
+### Snapshot schema (spec §4.3)
+
+```jsonc
+{
+  "schema": 1,
+  "generatedAt": "2026-09-22T06:00:00+08:00",
+  "accounts": [{
+    "provider": "claude",            // claude | glm | deepseek (chatgpt: P2)
+    "label": "Claude",
+    "quotas": {
+      "weekly":      { "used": 62, "cap": 140, "unit": "h", "resetAt": "...", "percent": 44.3 },
+      "rolling5h":   { "used": 18, "cap": 36,  "unit": "h", "resetAt": "...", "percent": 50.0 },
+      "weeklyTokens":{ "used": 412000, "cap": null, "unit": "tokens", "resetAt": "...", "percent": null }
+    }
+  }],
+  "weather": { "code": 61, "kind": "rain", "sunrise": "06:12", "sunset": "18:05", "city": "上海" },
+  "assetBundle": { "version": 3 }
+}
+```
+
+Additive fields beyond the spec: `percent` (server-computed, one decimal, null
+without a cap — devices only render), `kind` (normalized weather), and quota
+`basis` / account `error` for degraded providers. Rules:
+
+- Only **connected** accounts appear; the primary account is always `accounts[0]`.
+- A quota a provider cannot measure is `null` — never fabricated:
+  - **DeepSeek** has no weekly quota; its remaining balance flows into
+    `weeklyTokens` as `{ used: <CNY remaining>, cap: null, unit: "CNY", basis: "balance-remaining" }`.
+  - **GLM** coding-plan hours map to `rolling5h` when the endpoint returns a
+    recognizable used/total pair; otherwise it degrades the same way as
+    DeepSeek or reports `error` with null quotas.
+- A failing collector never breaks the snapshot: the account stays listed with
+  `error` and null quotas.
+- Claude usage hours use a simplified ccusage model: per-session message
+  timestamps clustered into activity blocks (gap ≤ 5 min splits), block
+  duration = last−first timestamp, clipped to the window. Weekly window = ISO
+  week (Mon 00:00 local). Tokens count input+output (cache tokens excluded).
+
+## Asset bundles (APB1)
+
+Byte-exact container (little-endian throughout):
+
+```
+0x00  4  magic "APB1"
+0x04  2  version (u16 LE)
+0x06  2  file_count (u16 LE)
+then file_count entries:
+  u16 name_len (LE) + name_len bytes UTF-8 relative path
+  u32 data_len (LE) + data_len bytes raw content
+```
+
+Must contain `manifest.json` plus frame files. Frame data = per-frame RGB565
+pixels concatenated, each pixel one u16 **little-endian** (LVGL native), frame
+size = w×h×2 bytes. Publish limit: 4 MB per bundle.
+
+Slot rules enforced at upload: actions 64×64 (run/fight 4–8 frames, sleep 2–4,
+victory ≤4), map 240×160, decorations 24×24 (≤8). fps 1–10. Rain/snow weather
+sprites (16×16, 2 frames) are always the built-in generated set in P1.
+
+## Config portal
+
+`http://<lan-ip>:<PORT>/portal` — password login (session cookie, 8 h). Pages:
+
+- **Accounts**: GLM/DeepSeek key forms (echo last 4 only), Claude collector
+  status and last collection, primary-account selector (default claude),
+  ChatGPT P2 placeholder.
+- **Preferences**: city (built-in table + custom lat/lon), weekly token budget
+  (null = plain number on the device).
+- **Devices**: device list (name/token status/last sync), generate one-time
+  pairing code, revoke tokens (effective immediately).
+- **Assets**: upload PNGs per slot (multipart), server-side validation and
+  RGB565 transcode, draft → publish (auto-incremented version) → history →
+  rollback (old version republished under a NEW version number). Missing draft
+  slots fall back to placeholder art at publish time.
+
+Portal security scope (P1): LAN + password, no CSRF tokens (forms only),
+no public exposure. Do not port-forward the service.
+
+## Directory layout
+
+```
+service/
+├── src/
+│   ├── index.ts               entry: env, stores, placeholder publish, listen
+│   ├── app.ts                 Fastify factory (cookie/formbody/multipart)
+│   ├── deviceApi.ts           /api/pair, /api/snapshot, /assets/*
+│   ├── snapshot.ts            §4.3 snapshot builder (pure)
+│   ├── snapshotService.ts     cache + scheduled refresh
+│   ├── weather.ts             open-meteo + 30-min cache (pure mapper)
+│   ├── wmo.ts                 WMO normalization (firmware mirror)
+│   ├── xpTable.ts             XP segmentation mirror (checks: 3145 total)
+│   ├── cityTable.ts           33-city table + location resolution
+│   ├── collectors/            claude.ts (jsonl), claudeUsage.ts (pure),
+│   │                          glm.ts / deepseek.ts (mappers + clients), registry.ts
+│   ├── assets/                bundleFormat.ts, rgb565.ts, pipeline.ts (sharp),
+│   │                          placeholder.ts, draftStore.ts, publisher.ts
+│   ├── store/                 settings.ts (config + keys), devices.ts, jsonStore.ts
+│   ├── portal/                routes.ts (pages + forms), session.ts, html.ts
+│   └── util/time.ts           local-offset ISO, ISO week window
+├── test/                      node:test suites (pure logic + fs tmpdirs)
+├── tools/                     gen-placeholder-bundle.ts, smoke.sh
+├── data/                      runtime (gitignored): config.json, keys.json,
+│                              devices.json, assets/ (bundles + draft)
+└── dist/                      build output (gitignored)
+```
+
+## Testing
+
+`npm test` runs the pure-logic suites: WMO normalization against the full
+0–99 range (mirrors `main/app/app_weather.c`), XP segmentation table (3145
+tomatoes to level 100), pairing-code lifecycle, APB1 pack/parse incl. the 4 MB
+cap, RGB565 endianness, Claude usage aggregation (blocks/windows/tokens),
+GLM/DeepSeek response mappers, snapshot field/order/percent rules, city table,
+publisher draft→publish→rollback lifecycle, and the sharp PNG pipeline.
+`npm run smoke` additionally boots the real server end-to-end.
+
+## Not implemented in P1
+
+- ChatGPT collector (no official quota API; P2 research).
+- Portal asset animation preview and snapshot preview rendering (P2).
+- Weather sprite uploads (built-in set only), per-device forced bundle re-push,
+  multi-device grouping (P3+), encrypted key storage, HTTPS (device uses plain
+  HTTP on the LAN in P1; add a reverse proxy if you need TLS).

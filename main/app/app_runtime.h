@@ -16,7 +16,7 @@
 #include "app_weather.h"
 #include "app_xp.h"
 
-extern esp_event_base_t APP_EVENT;
+ESP_EVENT_DECLARE_BASE(APP_EVENT);
 
 typedef enum {
     APP_EVENT_SNAPSHOT_UPDATED = 1,   // snap 快照有新数据(或首次加载)
