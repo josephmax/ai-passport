@@ -103,6 +103,7 @@ static void process_input(const input_event_t *in) {
 
     app_power_notify_activity();
     if (!ok_short && !ok_long && !up && !down) return;
+    ESP_LOGI(TAG, "键 btn=%d ev=%d 页=%d", (int)in->btn, (int)in->event, (int)s_page);
 
     // 输入任务不是 LVGL 任务:所有触达 LVGL 的页面键处理必须持锁
     // (仓库硬规则),否则与渲染任务竞态可能损坏 LVGL 池。

@@ -228,18 +228,26 @@ static void prov_task(void *arg) {
     }
 }
 
-bool app_prov_start(void) {
-    if (s_state == APP_PROV_AP_UP || s_state == APP_PROV_CONNECTING ||
-        s_state == APP_PROV_PAIRING) {
-        return true;
-    }
+// worker(队列+任务)在任何请求前确保就绪:曾因兜底同步路径在 UI 锁内
+// 做 Wi-Fi 重配,把 LVGL/输入/Wi-Fi 任务一并拖死(JTAG 尸检定位)。
+static bool ensure_worker(void) {
     if (!s_queue) {
         s_queue = xQueueCreate(2, sizeof(prov_form_t));
         if (!s_queue) return false;
     }
-    if (!s_task &&
-        xTaskCreate(prov_task, "prov", 4096, NULL, 4, &s_task) != pdPASS) {
-        return false;
+    if (!s_task) {
+        if (xTaskCreate(prov_task, "prov", 4096, NULL, 4, &s_task) != pdPASS) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool app_prov_start(void) {
+    if (!ensure_worker()) return false;
+    if (s_state == APP_PROV_AP_UP || s_state == APP_PROV_CONNECTING ||
+        s_state == APP_PROV_PAIRING) {
+        return true;
     }
 
     uint8_t mac[6] = { 0 };
@@ -305,9 +313,9 @@ const char *app_prov_ap_name(void) {
 }
 
 void app_prov_request_start(void) {
-    // 队列/任务不存在时(理论上不会)同步启动兜底。
-    if (!s_task) {
-        app_prov_start();
+    // 永远异步:绝不在这里直接碰 Wi-Fi(UI 持锁上下文)。
+    if (!ensure_worker()) {
+        ESP_LOGE(TAG, "配网 worker 创建失败");
         return;
     }
     s_start_requested = true;

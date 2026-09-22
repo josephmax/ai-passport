@@ -106,6 +106,7 @@ static void refresh_values(void) {
 }
 
 static void set_mode(set_mode_t mode) {
+    ESP_LOGI(TAG, "设置模式 %d -> %d", (int)s_mode, (int)mode);
     s_mode = mode;
     lv_obj_add_flag(s_top_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
