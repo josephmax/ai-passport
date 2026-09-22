@@ -38,6 +38,12 @@ CONFIG_FREERTOS_HZ=1000
 # app_main 的恢复流程持有较多局部结构(网络配置/快照解析),加宽主任务栈。
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
+# --- 调试:捕获越界写(真机连续出现任务栈被打穿的隐形破坏) ---
+# 堆投毒:缓冲区越界写会在下一次堆操作处立刻 abort 并带上调用者信息。
+CONFIG_HEAP_POISONING_COMPREHENSIVE=y
+# 栈用量编译器检查:函数栈帧超限在编译期/运行期暴露。
+CONFIG_COMPILER_STACK_CHECK_MODE=all
+
 # --- Bluetooth ---
 # 多合一挂坠不使用 BLE(配网走 SoftAP,规格 §2/ADR-0001),关闭以释放 ~60KB RAM。
 CONFIG_BT_ENABLED=n
