@@ -104,18 +104,46 @@ static bool http_read_all(const char *url, const char *token,
     return ok;
 }
 
-// 配对:一次性配对码经查询串上送(服务端兼容入口,见 service README)。
+// 配对:POST /api/pair {"code","deviceName"} → {"token"}(规格 §4 草案)。
 bool app_sync_pair(const char *base, const char *code) {
-    char url[160], resp[512];
-    snprintf(url, sizeof(url), "%s/api/pair?code=%s&deviceName=AI%%20Passport",
-             base, code);
+    char url[160], body[96], resp[512];
+    snprintf(url, sizeof(url), "%s/api/pair", base);
+    snprintf(body, sizeof(body),
+             "{\"code\":\"%s\",\"deviceName\":\"AI Passport\"}", code);
+
+    esp_http_client_config_t cfg = {
+        .url = url, .timeout_ms = HTTP_TIMEOUT_MS, .keep_alive_enable = false,
+    };
+    esp_http_client_handle_t h = esp_http_client_init(&cfg);
+    if (!h) return false;
+    esp_http_client_set_method(h, HTTP_METHOD_POST);
+    esp_http_client_set_header(h, "Content-Type", "application/json");
+    esp_http_client_set_post_field(h, body, (int)strlen(body));
+    bool http_ok = false;
     int status = 0;
-    if (!http_read_all(url, NULL, resp, sizeof(resp), &status)) return false;
-    if (status != 200) {
-        ESP_LOGW(TAG, "配对被拒: HTTP %d", status);
+    size_t got = 0;
+    if (esp_http_client_open(h, strlen(body)) == ESP_OK) {
+        if (esp_http_client_write(h, body, (int)strlen(body)) >= 0) {
+            (void)esp_http_client_fetch_headers(h);
+            status = esp_http_client_get_status_code(h);
+            if (status == 200) {
+                while (got + 1 < sizeof(resp)) {
+                    int n = esp_http_client_read(h, resp + got, sizeof(resp) - 1 - got);
+                    if (n <= 0) break;
+                    got += (size_t)n;
+                }
+                resp[got] = '\0';
+                http_ok = got > 0;
+            }
+        }
+    }
+    esp_http_client_cleanup(h);
+    if (!http_ok) {
+        ESP_LOGW(TAG, "配对请求失败: HTTP %d", status);
         return false;
     }
-    const char *t = strstr(resp, "\"token\"");
+    const char *rp = resp;
+    const char *t = strstr(rp, "\"token\"");
     t = t ? strchr(t + 7, '"') : NULL;
     if (!t) return false;
     t++;
