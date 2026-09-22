@@ -109,7 +109,7 @@ fully trusted users.
       "weeklyTokens":{ "used": 412000, "cap": null, "unit": "tokens", "resetAt": "...", "percent": null }
     }
   }],
-  "weather": { "code": 61, "kind": "rain", "sunrise": "06:12", "sunset": "18:05", "city": "上海" },
+  "weather": { "code": 61, "kind": "rain", "sunrise": "06:12", "sunset": "18:05", "city": "Shanghai" },
   "assetBundle": { "version": 3 }
 }
 ```
