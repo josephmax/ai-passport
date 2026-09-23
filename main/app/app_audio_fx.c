@@ -25,6 +25,7 @@ extern const uint8_t pendant_beep_pcm_end[] asm("_binary_pendant_beep_pcm_end");
 
 static QueueHandle_t s_queue;
 static TaskHandle_t s_task;
+static volatile bool s_stop;
 
 // 档位 0..5 → 输出百分比;0 档静音但流程照走(时序不变,好测试)。
 static const uint16_t VOLUME_PERCENT[6] = { 0, 12, 25, 40, 60, 85 };
@@ -94,6 +95,11 @@ bool app_audio_fx_init(void) {
 
 void app_audio_fx_play(app_fx_t fx) {
     if (!s_queue) return;
+    s_stop = false;
     xQueueReset(s_queue);          // 后到覆盖先到
     (void)xQueueSend(s_queue, &fx, 0);
+}
+
+void app_audio_fx_stop(void) {
+    s_stop = true;
 }

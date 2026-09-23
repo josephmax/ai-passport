@@ -108,62 +108,63 @@ def draw_pet(cv, frame, total, mode):
     bob = {"run": int(round(1.5 * math.sin(2 * math.pi * frame / total))),
            "fight": int(round(1 * math.sin(2 * math.pi * frame / total))),
            "sleep": 1, "victory": int(round(-4 * abs(math.sin(math.pi * frame / max(total - 1, 1)))))}.get(mode, 0)
-    cx, cy = 32, 34 + bob
+    # 整体放大 1.25x:身体 r16→r20,躯干中心下移贴近地面
+    cx, cy = 32, 38 + bob
     # 腿(睡觉不画跑步腿)
     if mode == "run":
-        for k, lx in enumerate((24, 37)):
+        for k, lx in enumerate((22, 38)):
             sw = 3 * math.sin(2 * math.pi * frame / total + k * math.pi)
-            cv.rect(lx - 2, 52 + bob, 5, 5 + int(abs(sw)), C["ink"] if False else C["body"])
-            cv.rect(lx - 2, 52 + bob, 5, 2, C["ink"] >> 1 | 0x2104)
+            cv.rect(lx - 3, 54 + bob, 7, 6 + int(abs(sw)), C["body"])
+            cv.rect(lx - 3, 54 + bob, 7, 2, C["ink"] >> 1 | 0x2104)
     else:
-        cv.rect(23, 52 + bob, 6, 4, C["body"])
-        cv.rect(35, 52 + bob, 6, 4, C["body"])
-    # 身体与肚皮
-    cv.disc(cx, cy, 16, C["body"])
-    cv.disc(cx, cy + 5, 9, C["body_hi"])
+        cv.rect(20, 54 + bob, 8, 5, C["body"])
+        cv.rect(36, 54 + bob, 8, 5, C["body"])
+    # 身体与肚皮(r20,贴地)
+    cv.disc(cx, cy, 20, C["body"])
+    cv.disc(cx, cy + 6, 12, C["body_hi"])
     # 呆毛
-    cv.line(cx, cy - 16, cx + 2, cy - 20, C["ink"])
-    cv.set(cx + 2, cy - 21, C["cheek"])
+    cv.line(cx, cy - 20, cx + 3, cy - 25, C["ink"])
+    cv.set(cx + 3, cy - 26, C["cheek"])
     # 眼睛/腮红
     if mode == "sleep":
-        cv.rect(cx - 8, cy - 3, 5, 2, C["ink"])
-        cv.rect(cx + 3, cy - 3, 5, 2, C["ink"])
+        cv.rect(cx - 10, cy - 4, 6, 2, C["ink"])
+        cv.rect(cx + 4, cy - 4, 6, 2, C["ink"])
         if frame % 2 == 0:
-            cv.line(46, 16 + bob, 50, 12 + bob, C["ink"])
-            cv.line(50, 12 + bob, 53, 12 + bob, C["ink"])
-            cv.line(53, 16 + bob, 56, 12 + bob, C["ink"])
+            cv.line(48, 14 + bob, 53, 9 + bob, C["ink"])
+            cv.line(53, 9 + bob, 56, 9 + bob, C["ink"])
+            cv.line(56, 14 + bob, 60, 9 + bob, C["ink"])
     else:
-        cv.disc(cx - 6, cy - 4, 2, C["ink"])
-        cv.disc(cx + 5, cy - 4, 2, C["ink"])
-        cv.set(cx - 7, cy - 5, C["white"])
-        cv.set(cx + 4, cy - 5, C["white"])
-        cv.rect(cx - 11, cy + 2, 3, 2, C["cheek"])
-        cv.rect(cx + 9, cy + 2, 3, 2, C["cheek"])
+        cv.disc(cx - 8, cy - 5, 3, C["ink"])
+        cv.disc(cx + 6, cy - 5, 3, C["ink"])
+        cv.set(cx - 9, cy - 6, C["white"])
+        cv.set(cx + 5, cy - 6, C["white"])
+        cv.rect(cx - 14, cy + 2, 4, 3, C["cheek"])
+        cv.rect(cx + 11, cy + 2, 4, 3, C["cheek"])
     # 嘴
-    cv.line(cx - 2, cy + 5, cx + 2, cy + 5, C["ink"])
+    cv.line(cx - 3, cy + 6, cx + 3, cy + 6, C["ink"])
 
     if mode == "fight":
         ang = math.pi * (0.25 + 0.35 * math.sin(2 * math.pi * frame / total))
-        sx, sy = cx + 10, cy - 6
-        ex = sx + int(14 * math.cos(ang))
-        ey = sy - int(14 * math.sin(ang))
+        sx, sy = cx + 12, cy - 8
+        ex = sx + int(18 * math.cos(ang))
+        ey = sy - int(18 * math.sin(ang))
         cv.line(sx, sy, ex, ey, C["steel"])
-        cv.line(sx - 1, sy + 1, sx + 3, sy - 3, C["ink"])
+        cv.line(sx - 1, sy + 1, sx + 4, sy - 4, C["ink"])
         if frame in (3, 4):   # 挥砍弧光
-            for t in range(-8, 9):
-                cv.set(cx + 14 + t, cy - 8 + abs(t) // 2, C["white"])
+            for t in range(-10, 11):
+                cv.set(cx + 17 + t, cy - 10 + abs(t) // 2, C["white"])
         eb = int(2 * math.sin(2 * math.pi * frame / total))
-        cv.disc(54, 40 + eb, 6, C["enemy"])
-        cv.set(52, 38 + eb, C["ink"])
-        cv.set(56, 38 + eb, C["ink"])
+        cv.disc(55, 42 + eb, 7, C["enemy"])
+        cv.set(52, 40 + eb, C["ink"])
+        cv.set(58, 40 + eb, C["ink"])
     if mode == "victory":
-        cv.line(cx - 12, cy - 2, cx - 18, cy - 12, C["body"])
-        cv.line(cx + 12, cy - 2, cx + 18, cy - 12, C["body"])
-        cv.disc(cx - 18, cy - 13, 2, C["cheek"])
-        cv.disc(cx + 18, cy - 13, 2, C["cheek"])
-        for t in range(4):
+        cv.line(cx - 14, cy - 3, cx - 22, cy - 15, C["body"])
+        cv.line(cx + 14, cy - 3, cx + 22, cy - 15, C["body"])
+        cv.disc(cx - 22, cy - 16, 3, C["cheek"])
+        cv.disc(cx + 22, cy - 16, 3, C["cheek"])
+        for t in range(5):
             a = 2 * math.pi * (frame + t) / total
-            cv.set(12 + int(8 * math.cos(a)), 14 + int(6 * math.sin(a)), C["gold"])
+            cv.set(10 + int(10 * math.cos(a)), 12 + int(8 * math.sin(a)), C["gold"])
 
 
 def frames_pet(mode, count):
@@ -247,9 +248,10 @@ def weather_frames(kind):
 # ---------------------------------------------------------------- 音效
 def synth_victory():
     sr = 16000
-    notes = [(523.25, .0, .16), (659.25, .16, .16), (783.99, .32, .16),
-             (1046.5, .48, .34), (1318.5, .70, .30), (1568.0, .90, .50)]
-    total = int(sr * 1.5)
+    # 短版 ~0.85s:快速上行琶音+一个延长高音(规格:不要太长,任意键可断)
+    notes = [(523.25, .0, .14), (659.25, .14, .14), (783.99, .28, .14),
+             (1046.5, .42, .40)]
+    total = int(sr * 0.85)
     buf = [0.0] * total
     for freq, t0, dur in notes:
         n0, n1 = int(t0 * sr), min(int((t0 + dur) * sr), total)

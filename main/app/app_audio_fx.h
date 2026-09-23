@@ -15,3 +15,6 @@ bool app_audio_fx_init(void);
 
 // 异步播放;忙时新请求替换旧的(胜利优先于提示)。
 void app_audio_fx_play(app_fx_t fx);
+
+// 立即中止当前播放(任意按键终止音效,规格 §6.1 用户定稿)。
+void app_audio_fx_stop(void);

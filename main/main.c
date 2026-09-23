@@ -71,7 +71,15 @@ static void runtime_restore(void) {
             }
         }
     }
-    if (rt->sunrise_min == 0) {   // 从未同步:合理缺省(6:30/18:30)
+#define TEST_SCENE 1   // 临时:强制白天+下雨验证天气精灵/地图滚动;验收后置 0
+#if TEST_SCENE
+    rt->weather_code = 63;              // 雨
+    rt->sunrise_min = 0;                // 全天白天 → 地图滚动、跑步动作
+    rt->sunset_min = 1439;
+    rt->rest.start_min = rt->rest.end_min = 0;   // 作息禁用,不睡觉
+    rt->tod = APP_TOD_DAY;
+#endif
+    if (rt->sunrise_min == 0 && !TEST_SCENE) {   // 从未同步:合理缺省(6:30/18:30)
         rt->sunrise_min = 6 * 60 + 30;
         rt->sunset_min = 18 * 60 + 30;
     }

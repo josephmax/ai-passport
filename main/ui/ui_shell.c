@@ -123,6 +123,7 @@ static void process_input(const input_event_t *in) {
     bool down = in->btn == BSP_BTN_DOWN && in->event == BSP_BTN_CLICK;
 
     app_power_notify_activity();
+    app_audio_fx_stop();   // 任意按键立即终止音效(用户定稿)
     if (!ok_short && !ok_long && !up && !down) return;
     ESP_LOGI(TAG, "键 btn=%d ev=%d 页=%d", (int)in->btn, (int)in->event, (int)s_page);
 
