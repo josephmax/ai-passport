@@ -11,6 +11,7 @@
 #include "app_sync.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_netif.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -126,6 +127,10 @@ static esp_err_t portal_post(httpd_req_t *req) {
     }
     return ESP_OK;
 }
+
+// AP 侧网络接口(DHCP):没有它手机能关联却拿不到 IP,
+// 上层直接报 unable to connect(真机现象,Mac/安卓皆然)。
+static esp_netif_t *s_ap_netif;
 
 static httpd_uri_t URI_GET = { .uri = "/", .method = HTTP_GET, .handler = portal_get };
 static httpd_uri_t URI_POST = { .uri = "/save", .method = HTTP_POST, .handler = portal_post };
@@ -255,6 +260,10 @@ bool app_prov_start(void) {
     esp_wifi_get_mac(WIFI_IF_STA, mac);
     snprintf(s_ap_name, sizeof(s_ap_name), "Passport-%02X%02X", mac[4], mac[5]);
 
+    if (!s_ap_netif) {
+        s_ap_netif = esp_netif_create_default_wifi_ap();   // 一次性创建,常驻
+        if (!s_ap_netif) return false;
+    }
     esp_wifi_stop();
     if (esp_wifi_set_mode(WIFI_MODE_APSTA) != ESP_OK) return false;
     wifi_config_t ap = { 0 };
