@@ -42,6 +42,8 @@ static app_asset_frames_t s_map;
 static lv_image_dsc_t s_map_dsc;
 static lv_obj_t *s_map_img[2];
 static int s_map_offset;
+static int s_scroll_ms;   // 位移毫秒累积:30px/s * 33ms/拍 = 0.99px,
+                          // 整数除法直接算每拍位移曾恒为 0 → 地图永远不滚
 
 // 当前动作帧 + 每帧描述符(数据指针指向 s_act.data 内部)。
 static app_asset_frames_t s_act;
@@ -238,7 +240,11 @@ static void tick(lv_timer_t *t) {
 
     // 地图滚动(睡觉与胜利时静止)。
     if (s_act_current == ACT_RUN || s_act_current == ACT_FIGHT) {
-        s_map_offset += SCROLL_PX_PER_S * TICK_MS / 1000;
+        s_scroll_ms += SCROLL_PX_PER_S * TICK_MS;
+        if (s_scroll_ms >= 1000) {
+            s_map_offset += s_scroll_ms / 1000;
+            s_scroll_ms %= 1000;
+        }
         if (s_map_offset >= MAP_W) s_map_offset -= MAP_W;
         lv_obj_set_pos(s_map_img[0], -s_map_offset, MAP_Y);
         lv_obj_set_pos(s_map_img[1], MAP_W - s_map_offset, MAP_Y);

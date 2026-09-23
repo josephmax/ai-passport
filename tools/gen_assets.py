@@ -241,7 +241,7 @@ def weather_frames(kind):
             for i, (x, y) in enumerate(pts):
                 dy = (i + f) % 2
                 cv.disc(x, y + dy, 1, C["snow"])
-        out += cv.pack()
+        out += cv.pack_alpha()   # 精灵契约:RGB565A8(此前漏改导致设备拒载)
     return bytes(out)
 
 
