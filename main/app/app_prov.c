@@ -262,7 +262,10 @@ bool app_prov_start(void) {
     ap.ap.ssid_len = (uint8_t)strlen(s_ap_name);
     ap.ap.channel = 1;   // 公司 2.4G 的 6 信道过挤:信标可达但关联握手失败
     ap.ap.max_connection = 4;
-    ap.ap.authmode = WIFI_AUTH_OPEN;   // P1:一次性短窗口,开网简化
+    // WPA2 密码:多数国产安卓 ROM 会拒绝/秒断无加密热点(社区已知问题),
+    // Mac 能连而安卓不行的现象与此吻合。密码明示在设备配网屏幕上。
+    ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    strlcpy((char *)ap.ap.password, "12345678", sizeof(ap.ap.password));
     esp_wifi_set_config(WIFI_IF_AP, &ap);
     if (esp_wifi_start() != ESP_OK) return false;
 
