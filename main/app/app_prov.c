@@ -260,8 +260,8 @@ bool app_prov_start(void) {
     wifi_config_t ap = { 0 };
     strlcpy((char *)ap.ap.ssid, s_ap_name, sizeof(ap.ap.ssid));
     ap.ap.ssid_len = (uint8_t)strlen(s_ap_name);
-    ap.ap.channel = 6;
-    ap.ap.max_connection = 2;
+    ap.ap.channel = 1;   // 公司 2.4G 的 6 信道过挤:信标可达但关联握手失败
+    ap.ap.max_connection = 4;
     ap.ap.authmode = WIFI_AUTH_OPEN;   // P1:一次性短窗口,开网简化
     esp_wifi_set_config(WIFI_IF_AP, &ap);
     if (esp_wifi_start() != ESP_OK) return false;
