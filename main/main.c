@@ -71,7 +71,7 @@ static void runtime_restore(void) {
             }
         }
     }
-#define TEST_SCENE 1   // 临时:强制白天+下雨验证天气精灵/地图滚动;验收后置 0
+#define TEST_SCENE 0   // 临时:强制白天+下雨验证天气精灵/地图滚动;验收后置 0
 #if TEST_SCENE
     rt->weather_code = 63;              // 雨
     rt->sunrise_min = 0;                // 全天白天 → 地图滚动、跑步动作
