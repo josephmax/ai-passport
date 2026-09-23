@@ -22,7 +22,9 @@ static const char *TAG = "ui_pet";
 #define MAP_W 240
 #define MAP_H 160
 #define MAP_Y 48
-#define PET_X 80            // 屏宽 1/3 处
+#define PET_X 80            // 屏宽 1/3 处(显示中心)
+#define PET_SCALE 512       // 2x 最近邻放大:64x64 素材显示为 128x128,
+                            // 像素风方块感;零额外内存(素材不变,仅显示变换)
 #define GROUND_Y (MAP_Y + MAP_H - 2)
 #define SCROLL_PX_PER_S 30
 #define WEATHER_SPRITES 3
@@ -131,7 +133,11 @@ static void set_action(act_t act) {
         return;
     }
     lv_image_set_src(s_pet_img, &s_act_dsc[0]);
-    lv_obj_set_pos(s_pet_img, PET_X, GROUND_Y - s_act.h);
+    // 放大后以"显示底边贴地、水平中心不变"定位:
+    // widget 仍是 64x64,2x 变换围绕其中心展开。
+    lv_obj_set_pos(s_pet_img,
+                   PET_X - s_act.w / 2,
+                   GROUND_Y - s_act.h - s_act.h / 2);
 }
 
 static act_t decide_action(void) {
@@ -411,6 +417,8 @@ ui_pet_t *ui_pet_create(void) {
 
     // 宠物本体(最上层)。
     s_pet_img = lv_image_create(scr);
+    lv_image_set_scale(s_pet_img, PET_SCALE);
+    lv_image_set_antialias(s_pet_img, false);   // 最近邻,像素风棱角分明
     s_act_loaded = ACT_NONE;
     s_act_current = ACT_NONE;
     set_action(ACT_RUN);
