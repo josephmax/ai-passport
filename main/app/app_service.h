@@ -1,4 +1,4 @@
-// main/app/app_service.h —— 周期维护服务(亮屏由 Shell 定时器驱动,浅睡间隙
+// main/app/app_service.h —— 周期维护服务(亮屏由输入工作任务驱动,浅睡间隙
 // 由电源任务驱动,两处共用同一入口,内部互斥)。
 //
 // 职责:番茄状态机推进(授经验/胜利)、今日/本周跨界回零、时段滞回推进、
@@ -17,6 +17,9 @@ void app_service_init(void);
 // 幂等推进;now_ms 为本地历元毫秒(esp_timer 校准后的系统时间)。
 // 返回后通过 app_runtime_publish 广播相应事件。
 void app_service_tick(int64_t now_ms);
+
+// Worker-only: settle earned XP and replace/cancel atomically with periodic polling.
+void app_service_configure_focus(uint8_t units, int64_t now_ms);
 
 // 立即把墙钟影子写盘(深睡前调用)。
 void app_service_flush_clock(void);

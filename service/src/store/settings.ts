@@ -20,6 +20,9 @@ export interface ServiceSettings {
   customLon: number | null;
   /** null = device renders the plain number, no percentage (spec §4.1). */
   weeklyTokenBudget: number | null;
+  /** Name shown beside today's Token use on the badge; empty uses firmware placeholder. */
+  badgeName: string;
+  badgeRole: string;
   claude: {
     label: string;
     weeklyCapHours: number;
@@ -36,6 +39,8 @@ export const DEFAULT_SETTINGS: ServiceSettings = {
   customLat: null,
   customLon: null,
   weeklyTokenBudget: null,
+  badgeName: "",
+  badgeRole: "",
   claude: {
     label: "Claude",
     // Defaults mirror spec §4.3 example values; adjust in data/config.json.
@@ -69,7 +74,7 @@ export class SettingsStore {
   constructor(dataDir: string) {
     this.configFile = path.join(dataDir, "config.json");
     this.keysFile = path.join(dataDir, "keys.json");
-    this.settings = readJson<ServiceSettings>(this.configFile, DEFAULT_SETTINGS);
+    this.settings = { ...DEFAULT_SETTINGS, ...readJson<ServiceSettings>(this.configFile, DEFAULT_SETTINGS) };
     this.keys = readJson<ServiceKeys>(this.keysFile, DEFAULT_KEYS);
   }
 

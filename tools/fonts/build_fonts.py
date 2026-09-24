@@ -12,6 +12,8 @@
 字体: assets/fonts/fusion-pixel-12px-proportional-{zh_hans,latin}.ttf (OFL)
 """
 import re
+import os
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -30,7 +32,8 @@ BASE = (
 
 # 24px 大字号只用于页面/卡片标题 —— 单独的小字符集控制 Flash 体积
 # (全量 686 字 24px 约 1.1MB,远超规格 100–200KB 字体预算)。
-TITLE_GLYPHS = "设置仪表盘宠物周额度小时本Token起始结束连接手机返回"
+TITLE_GLYPHS = "设置仪表盘宠物周额度小时本Token起始结束连接手机返回用量亮度音自动息屏作时间取消全部计经验分钟你的名字"
+BADGE_NAME_GLYPHS = (ROOT / "main" / "fonts" / "badge_name_glyphs.txt").read_text(encoding="utf-8").strip()
 
 # CJK 与全角区段(扫描目标)
 CJK_RANGES = (
@@ -73,8 +76,17 @@ def check_coverage(glyphs):
 
 def build_size(size, glyphs):
     out = OUT_DIR / f"app_font_{size}.c"
-    cmd = [
-        "npx", "--yes", f"lv_font_conv@{LV_FONT_CONV_VERSION}",
+    # Reuse a pinned local installation when npm/network access is unavailable.
+    local = os.environ.get("LV_FONT_CONV_JS")
+    if local:
+        converter = Path(local).resolve()
+        package = json.loads((converter.parent / "package.json").read_text())
+        if package["version"] != LV_FONT_CONV_VERSION:
+            raise ValueError("LV_FONT_CONV_JS must point to pinned lv_font_conv 1.5.3")
+        command = ["node", str(converter)]
+    else:
+        command = ["npx", "--yes", f"lv_font_conv@{LV_FONT_CONV_VERSION}"]
+    cmd = command + [
         "--font", str(FONT_ZH), "--symbols", "".join(sorted(glyphs)),
         "--font", str(FONT_LA), "-r", "0x20-0x7E",
         "--size", str(size), "--bpp", "4", "--format", "lvgl",
@@ -90,7 +102,7 @@ def build_size(size, glyphs):
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     glyphs = set(BASE) | scan_sources()
-    titles = set(TITLE_GLYPHS) | set(c for c in BASE if ord(c) < 0x80)
+    titles = set(TITLE_GLYPHS + BADGE_NAME_GLYPHS) | set(c for c in BASE if ord(c) < 0x80)
     print(f"正文 {len(glyphs)} 字符(基础 {len(set(BASE))} + 源码扫描 "
           f"{len(glyphs - set(BASE))});标题 {len(titles)} 字符")
     check_coverage(glyphs | titles)

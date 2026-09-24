@@ -97,6 +97,8 @@ void app_audio_fx_play(app_fx_t fx) {
     if (!s_queue) return;
     s_stop = false;
     xQueueReset(s_queue);          // 后到覆盖先到
+    ESP_LOGI(TAG, "音效入队 fx=%d (同步中=%d)", (int)fx,
+             (int)app_runtime()->sync_in_progress);
     (void)xQueueSend(s_queue, &fx, 0);
 }
 

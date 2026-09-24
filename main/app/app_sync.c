@@ -265,16 +265,19 @@ static void do_sync(void) {
     }
 
     rt->sync_in_progress = true;
+    rt->sync_result_valid = false;
     app_runtime_publish(APP_EVENT_SYNC_STATE);
 
     static char body[SNAPSHOT_MAX];
     char url[160];
     int status = 0;
+    bool snapshot_ok = false;
     snprintf(url, sizeof(url), "%s/api/snapshot", net.service_url);
     if (http_read_all(url, net.device_token, body, sizeof(body), &status) &&
         status == 200) {
         app_snapshot_t snap;
         if (app_snapshot_parse(body, strlen(body), &snap)) {
+            snapshot_ok = true;
             struct timeval tv;
             gettimeofday(&tv, NULL);
             rt->snap_received_at_ms =
@@ -318,6 +321,8 @@ static void do_sync(void) {
     }
 
     rt->sync_in_progress = false;
+    rt->sync_last_ok = snapshot_ok;
+    rt->sync_result_valid = true;
     s_busy = false;
     app_runtime_publish(APP_EVENT_SYNC_STATE);
 }

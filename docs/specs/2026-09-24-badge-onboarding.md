@@ -1,0 +1,65 @@
+**English** · [简体中文](2026-09-24-badge-onboarding.zh_CN.md)
+
+# Badge onboarding and config portal: design and handoff
+
+- Date: 2026-09-24
+- Status: design accepted; badge and existing portal implemented, NFC onboarding pending
+- Scope: this `feature/multi-pendant-p1` application, not the upstream hardware-test baseline
+- Related: [Home design](2026-09-24-home-panel-redesign.md), [config portal target](2026-09-22-config-portal.md), [service manual](../../service/README.md)
+
+## Accepted product decision
+
+The NFC tap should lead to **one recognizable entry** with two stages: first connect and pair the device, then manage its badge, accounts, assets, preferences, and devices. The provisioning form is hosted by the device's SoftAP; the daily settings portal is hosted by the local service. They cannot be one always-available HTTP page because the phone changes networks during onboarding. Keep their language and visual hierarchy consistent, and hand off from the provisioning result to the service portal when reachable. A manual path through device Settings and the phone browser must always work.
+
+The Home card combines the owner's name, optional role, and today's Token total; OK still opens usage details. The walking pet is left of the map's three completed-tomato readouts (today, lifetime total, remaining to next level). The five dots below the map describe the **current timer**, not lifetime totals. The authoritative current Home layout and render are in the [Home design](2026-09-24-home-panel-redesign.md) and `main/ui/ui_pet.c`.
+
+### Wireframe: intent, not a screenshot of shipped UI
+
+```text
+Device, 240 × 320                   Phone, one entry / two phases
+┌────────────────────────┐          ┌──────────────────────────────┐
+│ sync age       Wi-Fi  % │          │ PASSPORT · connect / manage  │
+│ Joseph     TODAY TOKEN  │          │ 1 Connect  →  2 Manage       │
+│ Developer       200M    │          │                              │
+│ Lv.6 ━━━        10:04   │          │ Connect: join device hotspot │
+│                        │          │   Wi-Fi / service URL / code │
+│   walking pet   Today 3 │          │   connect, pair, show result │
+│                 Total 36 │          │                              │
+│                 Need 4  │          │ Manage: Badge | Accounts    │
+│                        │          │   Preferences | Devices     │
+│ focus dots / timer  ⚙  │          │   Assets                     │
+└────────────────────────┘          └──────────────────────────────┘
+```
+
+The mobile design uses a dark header, light content surface, mint accent, short progress steps, a visible device/network state, and a preview of the badge. The connection stage should explain when to join or leave the device hotspot; the management stage should show the real service state. Demo values in a mockup must never be interpreted as actual device status, credentials, or usage.
+
+The wireframe uses **Joseph / Developer** and **200M today's Tokens** as approved display examples. The 200M figure is illustrative, not measured usage.
+
+The [interactive visual concept](badge-setup-concept.html) is kept in the repository for review. It predates the final Home tomato layout and contains illustrative states; this document and the current firmware define implementation status.
+
+## What exists in this checkout
+
+| Area | Current implementation | Source and verification |
+| --- | --- | --- |
+| Home badge and tomato progress | Name/role + daily Token card, map readouts, focus/settings navigation; local fallback identity before sync | `main/ui/ui_pet.c`, `main/app/app_xp.c`, [Home design](2026-09-24-home-panel-redesign.md); host LVGL render passed |
+| Badge configuration | Authenticated `/portal/badge` saves validated name/role; snapshot carries `badgeName`/`badgeRole` | `service/src/portal/routes.ts`, `service/src/portal/badgeName.ts`, `service/src/snapshot.ts`; service tests passed |
+| Daily portal | Accounts, Preferences, Devices, Assets, and Badge tabs; pair code, pairing API, snapshot, asset publishing | `service/src/portal/routes.ts`, `service/src/deviceApi.ts`, [service manual](../../service/README.md) |
+| Manual onboarding | Device Settings starts SoftAP; device page collects Wi-Fi, service URL, and one-time code; worker joins Wi-Fi and pairs | `main/ui/ui_settings.c`, `main/app/app_prov.c`, `main/app/app_sync.c`; the full phone/device path is not yet accepted on hardware |
+| Manual sync feedback | Settings shows unpaired/disconnected, queued/in progress, and snapshot success/failure | `main/ui/ui_settings.c`, `main/app/app_sync.c`; built and host checked, not yet accepted on hardware |
+
+The actual portal is functional but visually simpler than the proposed staged mobile concept. It does not yet provide a live device preview. The current SoftAP form is also a minimal separate page; there is no shared mobile shell or automatic handoff to the service portal.
+
+## Remaining work, in implementation order
+
+1. **On-device acceptance of the new Home and sync feedback.** The exact image below was written to the application partition and its device hash verified on 2026-09-24. Inspect badge, all three tomato values, focus control, settings feedback, wake and navigation. Then pair to a reachable local service and verify that a saved portal badge appears after manual sync. The device display and complete sync path still await user confirmation.
+2. **Make onboarding a cohesive flow.** Add clear connect/pairing/error/retry states to the device-hosted page and a transition to the service portal when the phone can reach it. Keep the current manual Settings path. Test wrong Wi-Fi, unreachable service, expired code, reconnection, and no captive popup.
+3. **Investigate NFC behavior on target phones.** The board has a passive NTAG213 with ordinary NDEF read/write and no MCU-facing API. No NFC payload programming, tap handler, or tested phone flow exists here. Choose a stable entry URL or records only after testing real phones and the network transition. Do not promise that a single tap will both join Wi-Fi and open the portal across phones. Provide explicit manual instructions when either OS action is not available.
+4. **Polish the daily portal.** Bring the existing Badge/Accounts/Preferences/Devices/Assets pages toward the shared design, add truthful connection status and preview, and preserve the existing auth and form behavior. An Overview tab and animation preview remain separate future work.
+
+Acceptance for NFC onboarding: from an unpaired device, a tap or the documented fallback reaches connection instructions; the phone can join the SoftAP, submit four fields, see the pairing result, return to the LAN, and reach the authenticated service portal. Repeat on each supported phone/OS. No NFC record may contain Wi-Fi passwords, API keys, portal passwords, pairing codes, or device tokens.
+
+## Reproducing and handing over safely
+
+The verified firmware bundle was built locally at `build/firmware/6af4b711769e056a1d859a1a3507e5dd2a1296b8bb814815a853387a2ebed799/` (full SHA-256 `6af4b711769e056a1d859a1a3507e5dd2a1296b8bb814815a853387a2ebed799`, application SHA-256 `d0f7043879b452987c2c9ea3e7a04d5f5eb14b0ef419d16135726461cd98a53c`, matching ELF SHA-256 `ef086796f1ec05edcefa25995dd72f19c5d55285cb8397069e257ee6e73f2401`). The complete `./tools/validate.sh` gate and host LVGL render passed. On 2026-09-24 the application was flashed at `0x10000–0x20651f` after explicit consent; the device partition-table hash matched the archive, and esptool verified the written data. NVS settings/focus records, PHY, and assets were not written. The user had reported a generic name and no Token figure before this latest flash; post-flash visual and service-sync results are pending. This bundle is ignored by Git and may not exist in another checkout; rebuild and verify there. Any later image needs its own flash consent.
+
+Owner-specific identity defaults may be supplied through Git-ignored `main/app/app_identity_local.h`; runtime portal settings are in ignored `service/data/`. Neither is transported with Git. A fresh checkout uses the generic name placeholder until configured and synced. The local service had a badge configured but no device record when checked; pairing with that service remains unverified. User-approved display examples in this design are not live measurements. Do not put credentials, codes, tokens, device identifiers, or raw logs in tracked docs or fixtures. Inspect `git status --short --branch` before editing, preserve unrelated work, and follow `AGENTS.md` for validation and fresh flash consent.

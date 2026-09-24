@@ -37,6 +37,9 @@ export interface SnapshotAccount {
 export interface Snapshot {
   schema: 1;
   generatedAt: string;
+  dailyTokens: { used: number | null };
+  badgeName: string;
+  badgeRole: string;
   accounts: SnapshotAccount[];
   weather: {
     code: number;
@@ -85,14 +88,20 @@ export function buildSnapshot(input: {
   results: Map<string, CollectorResult>;
   connected: Set<ProviderId>;
   weather: WeatherSnapshot | null;
-  settings: Pick<ServiceSettings, "primaryAccount" | "weeklyTokenBudget">;
+  settings: Pick<ServiceSettings, "primaryAccount" | "weeklyTokenBudget"> & Partial<Pick<ServiceSettings, "badgeName" | "badgeRole">>;
   assetBundleVersion: number;
 }): Snapshot {
   const { now, results, connected, weather, settings, assetBundleVersion } = input;
   const accounts: SnapshotAccount[] = [];
+  let dailyUsed: number | null = connected.size ? 0 : null;
   for (const provider of PROVIDER_ORDER) {
     if (!connected.has(provider)) continue;
     const r = results.get(provider);
+    // Never add money balances, weekly counters, or failed/partial readings.
+    // A partial sum must not be presented as the total for all connected accounts.
+    const daily = r?.dailyTokens;
+    if (!r?.ok || daily == null || !Number.isFinite(daily) || daily < 0) dailyUsed = null;
+    else if (dailyUsed !== null) dailyUsed = Math.min(1e16, dailyUsed + Math.floor(daily));
     const label = r?.label ?? provider;
     const quotas = {
       weekly: toSnapshotQuota(r?.quotas?.weekly),
@@ -115,6 +124,9 @@ export function buildSnapshot(input: {
   return {
     schema: 1,
     generatedAt: localIsoWithOffset(now),
+    dailyTokens: { used: dailyUsed },
+    badgeName: settings.badgeName ?? "",
+    badgeRole: settings.badgeRole ?? "",
     accounts,
     weather: weather
       ? {

@@ -1,7 +1,12 @@
 build/
+/build-dbg/
+/log/
+__pycache__/
 sdkconfig
 sdkconfig.old
 managed_components/
+# Per-device owner text is local data and must never enter source control.
+/main/app/app_identity_local.h
 .vscode/
 .idea/
 

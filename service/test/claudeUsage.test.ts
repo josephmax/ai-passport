@@ -116,3 +116,15 @@ test("claude: no recent activity -> rolling 5h zero with null resetAt", () => {
   assert.equal(stats.rolling5hResetAt, null);
   assert.equal(stats.weeklyHours, 0.1); // 3-minute burst this week
 });
+
+test("claude: daily tokens use local midnight, exclude yesterday and future entries", () => {
+  const now = new Date(2026, 8, 24, 12, 0);
+  const midnight = new Date(2026, 8, 24).getTime();
+  const stats = aggregateClaudeUsage([
+    { ts: midnight - 1, inputTokens: 1000, outputTokens: 1000 },
+    { ts: midnight, inputTokens: 10, outputTokens: 20 },
+    { ts: now.getTime(), inputTokens: 30, outputTokens: 40 },
+    { ts: now.getTime() + 1, inputTokens: 500, outputTokens: 500 },
+  ], now, { weeklyCapHours: 140, rolling5hCapHours: 36 });
+  assert.equal(stats.dailyTokens, 100);
+});

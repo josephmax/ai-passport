@@ -112,7 +112,34 @@ static void test_next_boundary(void) {
     printf("next_boundary ok\n");
 }
 
+static void test_reconfigure(void) {
+    app_focus_state_t f = {0};
+    const int64_t start = 1000;
+    assert(app_focus_configure(&f, 3, start) == APP_FOCUS_EV_STARTED);
+    assert(app_focus_poll(&f, start + UNIT_MS) == APP_FOCUS_EV_UNIT_DONE);
+    // Caller has persisted one lifetime XP; replacing focus only clears its local ledger.
+    assert(app_focus_configure(&f, 4, start + UNIT_MS + 100) == APP_FOCUS_EV_STARTED);
+    assert(f.units == 4 && f.xp_granted == 0);
+    assert(app_focus_remaining_ms(&f, start + UNIT_MS + 100) == 4 * UNIT_MS);
+    app_focus_state_t saved = f;
+    assert(app_focus_configure(&f, 6, 100) == APP_FOCUS_EV_NONE);
+    assert(memcmp(&f, &saved, sizeof(f)) == 0);
+    int grants = 0, victories = 0;
+    // Reboot well after the last boundary; still settle every unawarded unit once.
+    app_focus_ev_t event;
+    while ((event = app_focus_poll(&f, saved.end_at_ms + 86400000)) != APP_FOCUS_EV_NONE) {
+        grants += event == APP_FOCUS_EV_UNIT_DONE;
+        victories += event == APP_FOCUS_EV_VICTORY;
+    }
+    assert(grants == 4 && victories == 1);
+    assert(app_focus_poll(&f, saved.end_at_ms + 86400001) == APP_FOCUS_EV_NONE);
+    app_focus_configure(&f, 1, 2000);
+    app_focus_configure(&f, 0, 2001);
+    assert(!f.running && app_focus_poll(&f, 100000000) == APP_FOCUS_EV_NONE);
+}
+
 int main(void) {
+    test_reconfigure();
     test_start_and_add();
     test_poll_boundaries_and_victory();
     test_cancel_grants_nothing();

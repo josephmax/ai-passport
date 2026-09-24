@@ -28,6 +28,7 @@ import {
 } from "../assets/pipeline.js";
 import { BundleFormatError } from "../assets/bundleFormat.js";
 import { esc, flashFromQuery, layout, type PortalTab } from "./html.js";
+import { validateBadgeName, validateBadgeRole } from "./badgeName.js";
 import {
   SESSION_COOKIE,
   SessionStore,
@@ -230,6 +231,37 @@ ${keyCard("deepseek", "DeepSeek", "官方余额接口 api.deepseek.com/user/bala
     await deps.settings.update({ primaryAccount: body.primary });
     await deps.refreshSnapshot().catch(() => undefined);
     return redirect(reply, "/portal", `主力账户已设为 ${body.primary}`);
+  });
+
+  // ---- badge ---------------------------------------------------------------
+  app.get("/portal/badge", async (request, reply) => {
+    const { badgeName: name, badgeRole: role } = deps.settings.get();
+    const body = `<div class="card">
+  <h2>工牌名牌</h2>
+  <div class="hint">姓名与今日 Token 用量同屏显示；在主屏选中顶部信息区按 OK，仍进入用量明细。</div>
+  <form method="post" action="/portal/badge">
+    <label>展示姓名</label>
+    <input type="text" name="badgeName" maxlength="31" value="${esc(name)}" placeholder="你的名字" autocomplete="name">
+    <label>身份</label>
+    <input type="text" name="badgeRole" maxlength="10" value="${esc(role)}" placeholder="Developer">
+    <div class="hint" style="margin-top:6px">当前字体支持英文字母、数字及已收录汉字；最多约 4 个汉字。留空显示“你的名字”。</div>
+    <div style="margin-top:12px"><button type="submit">保存名牌</button></div>
+  </form>
+</div>`;
+    return reply.type("text/html").send(
+      layout({ title: "名牌", activeTab: "badge", flash: flashFromQuery(request.query as Record<string, unknown>), body }),
+    );
+  });
+
+  app.post("/portal/badge", async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const badgeName = validateBadgeName(body.badgeName);
+    if (badgeName === null) return redirect(reply, "/portal/badge", undefined, "姓名过长或含当前工牌字体未收录的字，请联系维护者扩充字库");
+    const badgeRole = validateBadgeRole(body.badgeRole);
+    if (badgeRole === null) return redirect(reply, "/portal/badge", undefined, "身份最多 10 个英文字符或数字，可含空格、句点、下划线和连字符");
+    await deps.settings.update({ badgeName, badgeRole });
+    await deps.refreshSnapshot().catch(() => undefined);
+    return redirect(reply, "/portal/badge", "名牌已保存，设备下次同步后显示");
   });
 
   // ---- preferences -----------------------------------------------------------

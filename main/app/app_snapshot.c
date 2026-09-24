@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 static void copy_str(char *dst, size_t cap, const cJSON *node) {
     if (!cJSON_IsString(node) || node->valuestring == NULL) return;
@@ -21,7 +22,8 @@ static bool parse_quota(const cJSON *node, app_quota_t *q) {
     const cJSON *cap = cJSON_GetObjectItemCaseSensitive(node, "cap");
     const cJSON *unit = cJSON_GetObjectItemCaseSensitive(node, "unit");
     const cJSON *reset = cJSON_GetObjectItemCaseSensitive(node, "resetAt");
-    if (cJSON_IsNumber(used)) q->used = used->valuedouble;
+    if (!cJSON_IsNumber(used) || !isfinite(used->valuedouble) || used->valuedouble < 0) return false;
+    q->used = used->valuedouble;
     if (cJSON_IsNumber(cap)) {
         q->cap = cap->valuedouble;
         q->has_cap = true;
@@ -64,6 +66,16 @@ bool app_snapshot_parse(const char *json, size_t len, app_snapshot_t *out) {
 
     const cJSON *schema = cJSON_GetObjectItemCaseSensitive(root, "schema");
     if (cJSON_IsNumber(schema)) out->schema = schema->valueint;
+    copy_str(out->badge_name, sizeof(out->badge_name),
+             cJSON_GetObjectItemCaseSensitive(root, "badgeName"));
+    copy_str(out->badge_role, sizeof(out->badge_role),
+             cJSON_GetObjectItemCaseSensitive(root, "badgeRole"));
+    const cJSON *daily = cJSON_GetObjectItemCaseSensitive(root, "dailyTokens");
+    const cJSON *used = cJSON_GetObjectItemCaseSensitive(daily, "used");
+    if (cJSON_IsNumber(used) && isfinite(used->valuedouble) && used->valuedouble >= 0) {
+        out->has_daily_tokens = true;
+        out->daily_tokens = used->valuedouble;
+    }
 
     const cJSON *generated = cJSON_GetObjectItemCaseSensitive(root, "generatedAt");
     int64_t gen_s = 0;

@@ -38,6 +38,14 @@ run_static_checks() {
         -o "${test_dir}/test_app_focus"
     "${test_dir}/test_app_focus"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_app_home.c main/app/app_home.c main/app/app_focus.c \
+        -o "${test_dir}/test_app_home"
+    "${test_dir}/test_app_home"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain -Itests/store_stubs -Itests/bsp_stubs \
+        tests/test_app_store.c main/app/app_store.c main/app/app_focus.c main/app/app_xp.c \
+        -o "${test_dir}/test_app_store"
+    "${test_dir}/test_app_store"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
         tests/test_app_xp.c main/app/app_xp.c main/app/app_time.c \
         -o "${test_dir}/test_app_xp"
     "${test_dir}/test_app_xp"

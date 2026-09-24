@@ -24,8 +24,11 @@ void app_store_init(void) {
     if (s_nvs) return;
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        // 分区布局变更(如基线 → 挂坠)后的首次启动会走到这里:擦后重试。
-        ESP_LOGW(TAG, "NVS 需要重新格式化: %s", esp_err_to_name(err));
+        // 两种来源:分区布局变更后的首次启动;或复位恰好撕断 NVS 写入致分区
+        // 损坏(真机见过:USB 总线复位打断经验落盘)。后者意味着全部持久化
+        // 数据就此丢失,必须留下响亮痕迹供事后归因。
+        ESP_LOGE(TAG, "NVS 重新格式化,经验/番茄/设置全部丢失: %s",
+                 esp_err_to_name(err));
         err = nvs_flash_erase();
         if (err == ESP_OK) err = nvs_flash_init();
     }
@@ -42,7 +45,19 @@ void app_store_init(void) {
 static bool read_blob(const char *key, void *out, size_t len) {
     if (!s_nvs) return false;
     size_t got = 0;
+    if (nvs_get_blob(s_nvs, key, NULL, &got) != ESP_OK || got != len) return false;
     return nvs_get_blob(s_nvs, key, out, &got) == ESP_OK && got == len;
+}
+
+uint8_t app_store_focus_preset(void) {
+    uint8_t units = 1;
+    if (s_nvs) (void)nvs_get_u8(s_nvs, "focus_n", &units);
+    return units <= APP_FOCUS_MAX_UNITS ? units : 1;
+}
+
+void app_store_save_focus_preset(uint8_t units) {
+    if (s_nvs && units <= APP_FOCUS_MAX_UNITS &&
+        nvs_set_u8(s_nvs, "focus_n", units) == ESP_OK) (void)nvs_commit(s_nvs);
 }
 
 static void write_blob(const char *key, const void *data, size_t len) {

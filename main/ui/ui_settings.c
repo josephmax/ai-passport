@@ -1,477 +1,246 @@
-// main/ui/ui_settings.c —— 设置页实现(规格 §7/§7.1 严格分层)。
-// 一级=大按钮(上下留给切页);二级=列表(上下=光标,OK=选中);
-// 数值项进入调整态(上下=调值实时生效,OK=确认,长按=取消回滚);
-// 流程项(作息/连接手机/配网)进入各自界面;长按逐级返回。
 #include "ui_settings.h"
-
 #include "app_audio_fx.h"
 #include "app_prov.h"
 #include "app_runtime.h"
-#include "app_store.h"
 #include "app_sync.h"
 #include "ui_theme.h"
-
-#include "esp_log.h"
 #include <stdio.h>
 #include <string.h>
 
-static const char *TAG = "ui_set";
-
-typedef enum {
-    ITEM_BRIGHTNESS = 0,
-    ITEM_VOLUME,
-    ITEM_SCREEN_OFF,
-    ITEM_REST,
-    ITEM_WIFI,
-    ITEM_CONNECT,
-    ITEM_SYNC,
-    ITEM_COUNT,
-} item_t;
-
-typedef enum {
-    SET_TOP = 0,     // 一级:大设置按钮
-    SET_LIST,        // 二级:列表
-    SET_ADJUST,      // 调整态:数值项被选中
-    SET_REST,        // 流程:作息起止
-    SET_CONNECT,     // 流程:连接手机(QR)
-    SET_PROV,        // 流程:配网
-} set_mode_t;
-
+typedef enum { BRIGHTNESS, WIFI, SCREEN_OFF, REST, CONNECT, VOLUME, SYNC, ITEM_COUNT } item_t;
+typedef enum { LIST, ADJUST, REST_EDIT, CONNECT_FLOW, PROV_FLOW } settings_mode_t;
+static const char *NAMES[] = {"亮度", "Wi-Fi", "自动息屏", "作息时间", "连接手机", "音量", "立即同步"};
+static const uint16_t OFF_STEPS[] = {15, 30, 60, 120};
 static ui_settings_t *s_settings;
 static ui_status_bar_t s_status;
-static lv_obj_t *s_top_view;
-static lv_obj_t *s_list_view;
-static lv_obj_t *s_sub_view;
-static lv_obj_t *s_rows[ITEM_COUNT];
-static lv_obj_t *s_values[ITEM_COUNT];
-static int s_selected;
-static set_mode_t s_mode;
-
-// 调整态:进入时的值快照,长按取消时回滚。
-static struct {
-    uint8_t brightness;
-    uint8_t volume;
-    uint16_t auto_off_s;
-} s_adjust_entry;
-
-static lv_obj_t *s_rest_labels[2];
+static lv_obj_t *s_content, *s_hint, *s_title, *s_rows[ITEM_COUNT], *s_values[ITEM_COUNT];
+static lv_obj_t *s_value, *s_steps[5], *s_rest_rows[2], *s_rest_labels[2], *s_flow_text;
+static settings_mode_t s_mode;
+static item_t s_selected;
+static app_settings_t s_entry, s_draft;
 static int s_rest_pick;
-static lv_obj_t *s_qr;
-static lv_obj_t *s_url_label;
-static lv_obj_t *s_token_label;
-static lv_obj_t *s_hint_label;
-static ui_page_dots_t s_dots;
+static ui_settings_work_t s_work;
+static bool s_sync_requested;
 
-static const uint16_t AUTO_OFF_STEPS[] = { 15, 30, 60, 120 };
-#define AUTO_OFF_STEP_COUNT 4
-
-static void save_and_apply(void) {
-    app_runtime_t *rt = app_runtime();
-    rt->rest.start_min = rt->settings.rest_start_min;
-    rt->rest.end_min = rt->settings.rest_end_min;
-    app_store_save_settings(&rt->settings);
-}
-
-static int auto_off_step_index(uint16_t s) {
-    for (int i = 0; i < AUTO_OFF_STEP_COUNT; i++) {
-        if (AUTO_OFF_STEPS[i] == s) return i;
-    }
+static int off_index(uint16_t value) {
+    for (int i = 0; i < 4; i++) if (OFF_STEPS[i] == value) return i;
     return 1;
 }
 
-static void refresh_values(void) {
+static void schedule_save(void) {
     app_runtime_t *rt = app_runtime();
-    char buf[40];
-    snprintf(buf, sizeof(buf), "%d/5", rt->settings.brightness);
-    lv_label_set_text(s_values[ITEM_BRIGHTNESS], buf);
-    snprintf(buf, sizeof(buf), "%d/5", rt->settings.volume);
-    lv_label_set_text(s_values[ITEM_VOLUME], buf);
-    snprintf(buf, sizeof(buf), "%d分", rt->settings.auto_off_s / 60);
-    lv_label_set_text(s_values[ITEM_SCREEN_OFF], buf);
-    snprintf(buf, sizeof(buf), "%02d:%02d-%02d:%02d",
-             rt->settings.rest_start_min / 60, rt->settings.rest_start_min % 60,
-             rt->settings.rest_end_min / 60, rt->settings.rest_end_min % 60);
-    lv_label_set_text(s_values[ITEM_REST], buf);
-    switch (app_prov_state()) {
-    case APP_PROV_AP_UP: lv_label_set_text(s_values[ITEM_WIFI], "热点已开"); break;
-    case APP_PROV_CONNECTING: lv_label_set_text(s_values[ITEM_WIFI], "连接中"); break;
-    case APP_PROV_PAIRING: lv_label_set_text(s_values[ITEM_WIFI], "配对中"); break;
-    case APP_PROV_DONE: lv_label_set_text(s_values[ITEM_WIFI], "成功"); break;
-    case APP_PROV_FAILED: lv_label_set_text(s_values[ITEM_WIFI], "重试"); break;
-    default:
-        lv_label_set_text(s_values[ITEM_WIFI], rt->wifi_connected ? "已连接" : "进入");
-        break;
-    }
-    lv_label_set_text(s_values[ITEM_CONNECT], rt->paired ? "已配对" : "未配网");
-    lv_label_set_text(s_values[ITEM_SYNC], rt->wifi_connected ? "按 OK 同步" : "未连接");
+    rt->rest = (app_rest_window_t){.start_min = rt->settings.rest_start_min, .end_min = rt->settings.rest_end_min};
+    s_work.settings = rt->settings;
+    s_work.save = true;
 }
 
-static void set_mode(set_mode_t mode) {
-    ESP_LOGI(TAG, "设置模式 %d -> %d", (int)s_mode, (int)mode);
-#if LV_USE_QRCODE
-    if (mode != SET_CONNECT && s_qr) {
-        lv_obj_delete(s_qr);   // 归还池内存
-        s_qr = NULL;
+static void cancel_edit(void) {
+    if (s_mode == ADJUST) {
+        app_runtime()->settings = s_entry;
+        ui_theme_brightness_apply(s_entry.brightness);
     }
-#endif
-    s_mode = mode;
-    lv_obj_add_flag(s_top_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_sub_view, LV_OBJ_FLAG_HIDDEN);
-    switch (mode) {
-    case SET_TOP: lv_obj_clear_flag(s_top_view, LV_OBJ_FLAG_HIDDEN); break;
-    case SET_LIST:
-    case SET_ADJUST: lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN); break;
-    default: lv_obj_clear_flag(s_sub_view, LV_OBJ_FLAG_HIDDEN); break;
+    if (s_mode == PROV_FLOW) s_work.cancel_provisioning = true;
+}
+
+ui_settings_work_t ui_settings_take_work(void) {
+    ui_settings_work_t work = s_work;
+    memset(&s_work, 0, sizeof(s_work));
+    return work;
+}
+
+static void value_text(item_t item, char *buf, size_t cap) {
+    app_runtime_t *rt = app_runtime();
+    switch (item) {
+    case BRIGHTNESS: snprintf(buf, cap, "%u / 5", rt->settings.brightness); break;
+    case VOLUME: snprintf(buf, cap, "%u / 5", rt->settings.volume); break;
+    case SCREEN_OFF:
+        if (rt->settings.auto_off_s < 60) snprintf(buf, cap, "%u 秒", rt->settings.auto_off_s);
+        else snprintf(buf, cap, "%u 分钟", rt->settings.auto_off_s / 60);
+        break;
+    case REST: snprintf(buf, cap, "%02u:%02u-%02u:%02u", rt->settings.rest_start_min / 60,
+        rt->settings.rest_start_min % 60, rt->settings.rest_end_min / 60, rt->settings.rest_end_min % 60); break;
+    case WIFI: snprintf(buf, cap, "%s", rt->wifi_connected ? "已连接" : "配网"); break;
+    case CONNECT: snprintf(buf, cap, "%s", rt->paired ? "已配对" : "未配对"); break;
+    case SYNC:
+        snprintf(buf, cap, "%s", !rt->paired ? "未配对" : !rt->wifi_connected ? "未连接" :
+                 rt->sync_in_progress ? "同步中" : s_sync_requested ?
+                 (rt->sync_result_valid ? (rt->sync_last_ok ? "已同步" : "同步失败") : "请求中") : "执行");
+        break;
+    default: buf[0] = '\0'; break;
     }
-    ui_settings_refresh();
 }
 
 void ui_settings_refresh(void) {
     if (!s_settings) return;
+    app_runtime_t *rt = app_runtime();
     ui_theme_status_bar_refresh(&s_status);
-
-    for (int i = 0; i < ITEM_COUNT; i++) {
-        bool cursor = s_mode == SET_LIST && i == s_selected;
-        bool editing = s_mode == SET_ADJUST && i == s_selected;
-        lv_obj_set_style_bg_color(s_rows[i],
-            lv_color_hex(cursor || editing ? UI_SURFACE_HI : UI_SURFACE), 0);
-        lv_obj_set_style_border_color(s_rows[i],
-            lv_color_hex(cursor ? UI_ACCENT : (editing ? UI_WARN : UI_LINE)), 0);
-        lv_obj_set_style_text_color(s_values[i],
-            lv_color_hex(editing ? UI_WARN : UI_ACCENT), 0);
-    }
-    refresh_values();
-
-    switch (s_mode) {
-    case SET_TOP: ui_theme_hint_set(s_hint_label, "切页", "进入", NULL); break;
-    case SET_LIST: ui_theme_hint_set(s_hint_label, "选择", "选中", "返回"); break;
-    case SET_ADJUST: ui_theme_hint_set(s_hint_label, "调整", "确认", "取消"); break;
-    case SET_REST: ui_theme_hint_set(s_hint_label, "起/止", "+30分", "返回"); break;
-    case SET_CONNECT: ui_theme_hint_set(s_hint_label, NULL, NULL, "返回"); break;
-    case SET_PROV: ui_theme_hint_set(s_hint_label, NULL, NULL, "退出配网"); break;
-    default: break;
-    }
-}
-
-// ---- 调整态:上下调值实时生效,OK 确认,长按回滚 ----
-static void adjust_enter(void) {
-    app_runtime_t *rt = app_runtime();
-    s_adjust_entry.brightness = rt->settings.brightness;
-    s_adjust_entry.volume = rt->settings.volume;
-    s_adjust_entry.auto_off_s = rt->settings.auto_off_s;
-    set_mode(SET_ADJUST);
-}
-
-static void adjust_apply(int dir) {
-    app_runtime_t *rt = app_runtime();
-    switch ((item_t)s_selected) {
-    case ITEM_BRIGHTNESS: {
-        int v = rt->settings.brightness + dir;
-        if (v >= 1 && v <= 5) {
-            rt->settings.brightness = (uint8_t)v;
-            ui_theme_brightness_apply(rt->settings.brightness);
+    char buf[48];
+    if (s_mode == LIST) {
+        for (int i = 0; i < ITEM_COUNT; i++) {
+            ui_theme_select(s_rows[i], i == (int)s_selected);
+            if (i != (int)s_selected) lv_obj_set_style_bg_color(s_rows[i], lv_color_hex(UI_BG), 0);
+            value_text((item_t)i, buf, sizeof(buf));
+            lv_label_set_text(s_values[i], buf);
+            lv_obj_set_style_text_color(s_values[i], lv_color_hex(i == (int)s_selected ? UI_ACCENT : UI_INK_DIM), 0);
         }
-        break;
-    }
-    case ITEM_VOLUME: {
-        int v = rt->settings.volume + dir;
-        if (v >= 0 && v <= 5) {
-            rt->settings.volume = (uint8_t)v;
-            app_audio_fx_play(APP_FX_BEEP);   // 音量回馈:一耳朵听出档位
+        if (s_selected == SYNC && s_sync_requested && rt->sync_result_valid)
+            ui_theme_hint_set(s_hint, NULL, rt->sync_last_ok ? "同步成功" : "同步失败", "返回");
+    } else if (s_mode == ADJUST) {
+        value_text(s_selected, buf, sizeof(buf));
+        lv_label_set_text(s_value, buf);
+        int n = s_selected == BRIGHTNESS ? rt->settings.brightness : s_selected == VOLUME ? rt->settings.volume : off_index(rt->settings.auto_off_s) + 1;
+        for (int i = 0; i < 5; i++) lv_obj_set_style_bg_color(s_steps[i], lv_color_hex(i < n ? UI_ACCENT : UI_LINE), 0);
+    } else if (s_mode == REST_EDIT) {
+        for (int i = 0; i < 2; i++) {
+            uint16_t m = i ? s_draft.rest_end_min : s_draft.rest_start_min;
+            lv_label_set_text_fmt(s_rest_labels[i], "%02u:%02u", m / 60, m % 60);
+            ui_theme_select(s_rest_rows[i], i == s_rest_pick);
         }
-        break;
-    }
-    case ITEM_SCREEN_OFF: {
-        int idx = auto_off_step_index(rt->settings.auto_off_s) + dir;
-        if (idx >= 0 && idx < AUTO_OFF_STEP_COUNT) {
-            rt->settings.auto_off_s = AUTO_OFF_STEPS[idx];
+        ui_theme_hint_set(s_hint, "调整", s_rest_pick ? "保存" : "下一项", "取消");
+    } else if (s_mode == PROV_FLOW) {
+        const char *state = "正在启动热点";
+        switch (app_prov_state()) {
+        case APP_PROV_AP_UP: state = "手机连接热点后完成配网"; break;
+        case APP_PROV_CONNECTING: state = "正在连接 Wi-Fi"; break;
+        case APP_PROV_PAIRING: state = "正在配对"; break;
+        case APP_PROV_DONE: state = "配网完成"; break;
+        case APP_PROV_FAILED: state = "失败 · OK 重试"; break;
+        default: break;
         }
-        break;
-    }
-    default: break;
-    }
-    refresh_values();
-}
-
-static void adjust_confirm(void) {
-    save_and_apply();
-    set_mode(SET_LIST);
-}
-
-static void adjust_cancel(void) {
-    app_runtime_t *rt = app_runtime();
-    rt->settings.brightness = s_adjust_entry.brightness;
-    rt->settings.volume = s_adjust_entry.volume;
-    rt->settings.auto_off_s = s_adjust_entry.auto_off_s;
-    ui_theme_brightness_apply(rt->settings.brightness);
-    set_mode(SET_LIST);
-}
-
-// ---- 流程页内容刷新 ----
-static void rest_refresh(void) {
-    app_runtime_t *rt = app_runtime();
-    for (int i = 0; i < 2; i++) {
-        uint16_t m = i == 0 ? rt->settings.rest_start_min
-                            : rt->settings.rest_end_min;
-        lv_label_set_text_fmt(s_rest_labels[i], "%s %02d:%02d",
-                              i == 0 ? "起始" : "结束", m / 60, m % 60);
-        lv_obj_set_style_text_color(s_rest_labels[i],
-            lv_color_hex(i == s_rest_pick ? UI_ACCENT : UI_INK), 0);
+        lv_label_set_text(s_flow_text, state);
+        const char *ap = app_prov_ap_name();
+        lv_label_set_text(s_value, ap ? ap : "--");
     }
 }
 
-static void connect_refresh(void) {
-    app_runtime_t *rt = app_runtime();
+static void show(settings_mode_t mode) {
+    if (s_content) lv_obj_delete(s_content);
+    s_content = ui_theme_box(s_settings->screen, 0, 24, 240, 274, UI_BG);
+    s_mode = mode;
+    s_title = ui_theme_label(s_content, 12, 6, 216, &app_font_24, UI_INK, mode == LIST ? "设置" : NAMES[s_selected]);
+    if (mode == LIST) {
+        for (int i = 0; i < ITEM_COUNT; i++) {
+            s_rows[i] = ui_theme_card(s_content, 8, 36 + i * 33, 224, 32, false);
+            ui_theme_label(s_rows[i], 10, 10, 90, &app_font_12, UI_INK, NAMES[i]);
+            s_values[i] = ui_theme_label(s_rows[i], 102, 10, 112, &app_font_12, UI_INK_DIM, "");
+            lv_obj_set_style_text_align(s_values[i], LV_TEXT_ALIGN_RIGHT, 0);
+        }
+        ui_theme_hint_set(s_hint, "选择", "进入", "返回");
+    } else if (mode == ADJUST) {
+        s_value = ui_theme_label(s_content, 16, 85, 208, &app_font_24, UI_ACCENT, "");
+        for (int i = 0; i < 5; i++) {
+            s_steps[i] = ui_theme_box(s_content, 16 + i * 43, 157, 36, 9, UI_LINE);
+            lv_obj_set_style_radius(s_steps[i], 2, 0);
+            if (s_selected == SCREEN_OFF && i == 4) lv_obj_add_flag(s_steps[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        ui_theme_label(s_content, 16, 195, 208, &app_font_12, UI_INK_DIM, "即时预览 · 长按恢复原值");
+        ui_theme_hint_set(s_hint, "调整", "保存", "取消");
+    } else if (mode == REST_EDIT) {
+        for (int i = 0; i < 2; i++) {
+            s_rest_rows[i] = ui_theme_card(s_content, 12, 58 + i * 82, 216, 62, false);
+            ui_theme_label(s_rest_rows[i], 10, 8, 192, &app_font_12, UI_INK_DIM, i ? "结束休息" : "开始休息");
+            s_rest_labels[i] = ui_theme_label(s_rest_rows[i], 10, 29, 192, &lv_font_montserrat_28, UI_INK, "");
+        }
+        ui_theme_label(s_content, 12, 226, 216, &app_font_12, UI_INK_DIM, "每次调整 30 分钟");
+    } else if (mode == CONNECT_FLOW) {
+        app_runtime_t *rt = app_runtime();
 #if LV_USE_QRCODE
-    if (!s_qr) {
-        s_qr = lv_qrcode_create(s_sub_view);
-        lv_qrcode_set_size(s_qr, 88);
-        lv_qrcode_set_dark_color(s_qr, lv_color_hex(0x0E1626));
-        lv_qrcode_set_light_color(s_qr, lv_color_hex(0xFFFFFF));
-        lv_obj_set_pos(s_qr, 76, 26);
-    }
+        if (rt->service_url[0]) {
+            lv_obj_t *qr = lv_qrcode_create(s_content);
+            lv_qrcode_set_size(qr, 96);
+            lv_qrcode_set_dark_color(qr, lv_color_hex(UI_BG));
+            lv_qrcode_set_light_color(qr, lv_color_hex(0xFFFFFF));
+            lv_obj_set_pos(qr, 72, 54);
+            lv_qrcode_update(qr, rt->service_url, strlen(rt->service_url));
+        }
 #endif
-    if (rt->service_url[0]) {
-        lv_label_set_text(s_url_label, rt->service_url);
-#if LV_USE_QRCODE
-        lv_qrcode_update(s_qr, rt->service_url, strlen(rt->service_url));
-#endif
+        lv_obj_t *url = ui_theme_label(s_content, 12, 168, 216, &app_font_12, UI_INK,
+            rt->service_url[0] ? rt->service_url : "未配置服务地址");
+        lv_label_set_long_mode(url, LV_LABEL_LONG_WRAP);
+        lv_obj_set_height(url, 42);
+        ui_theme_label(s_content, 12, 222, 216, &app_font_12, UI_INK_DIM, rt->paired ? "令牌正常" : "未配对");
+        ui_theme_hint_set(s_hint, NULL, NULL, "返回");
     } else {
-        lv_label_set_text(s_url_label, "未配置服务地址");
-#if LV_USE_QRCODE
-        lv_qrcode_update(s_qr, "AI-Passport", 12);
-#endif
+        s_value = ui_theme_label(s_content, 12, 94, 216, &app_font_12, UI_ACCENT, "--");
+        s_flow_text = ui_theme_label(s_content, 12, 146, 216, &app_font_12, UI_INK_DIM, "");
+        ui_theme_hint_set(s_hint, NULL, "重试", "返回");
     }
-    lv_label_set_text(s_token_label, rt->paired ? "令牌正常" : "未配对(等待配网)");
-}
-
-static void prov_refresh(void) {
-    const char *ap = app_prov_ap_name();
-    lv_label_set_text(s_rest_labels[0], ap ? ap : "Passport-****");
-    switch (app_prov_state()) {
-    case APP_PROV_AP_UP: lv_label_set_text(s_rest_labels[1], "热点已开·手机连接后弹出"); break;
-    case APP_PROV_CONNECTING: lv_label_set_text(s_rest_labels[1], "正在连接 Wi-Fi"); break;
-    case APP_PROV_PAIRING: lv_label_set_text(s_rest_labels[1], "正在配对"); break;
-    case APP_PROV_DONE: lv_label_set_text(s_rest_labels[1], "配网完成"); break;
-    case APP_PROV_FAILED: lv_label_set_text(s_rest_labels[1], "失败·OK 重试"); break;
-    default: lv_label_set_text(s_rest_labels[1], "启动中"); break;
-    }
+    ui_settings_refresh();
 }
 
 bool ui_settings_key(bool ok_short, bool ok_long, bool up, bool down) {
     if (!s_settings) return false;
     app_runtime_t *rt = app_runtime();
-    int dir = up ? 1 : (down ? -1 : 0);
-
-    switch (s_mode) {
-    case SET_TOP:
-        if (ok_short) {
-            set_mode(SET_LIST);
-            return true;
-        }
-        return false;   // 上下留给 Shell 切页;长按无操作
-
-    case SET_LIST:
-        if (ok_long) {
-            set_mode(SET_TOP);
-            return true;
-        }
-        if (up || down) {
-            s_selected = (s_selected + (up ? ITEM_COUNT - 1 : 1)) % ITEM_COUNT;
-            ui_settings_refresh();
-            return true;
-        }
-        if (!ok_short) return false;
-        switch ((item_t)s_selected) {
-        case ITEM_BRIGHTNESS:
-        case ITEM_VOLUME:
-        case ITEM_SCREEN_OFF:
-            adjust_enter();
-            break;
-        case ITEM_REST:
-            s_rest_pick = 0;
-            set_mode(SET_REST);
-            rest_refresh();
-            break;
-        case ITEM_WIFI:
-            app_prov_request_start();   // 异步:Wi-Fi 重配绝不占 UI 锁
-            set_mode(SET_PROV);
-            prov_refresh();
-            break;
-        case ITEM_CONNECT:
-            set_mode(SET_CONNECT);
-            connect_refresh();
-            break;
-        case ITEM_SYNC:
-            if (rt->paired && rt->wifi_connected) {
-                app_sync_request_now();
-                lv_label_set_text(s_values[ITEM_SYNC], "同步中…");
+    int dir = up ? 1 : down ? -1 : 0;
+    if (s_mode == LIST) {
+        if (ok_long) return false;
+        if (dir) { s_selected = (item_t)((s_selected + (up ? ITEM_COUNT - 1 : 1)) % ITEM_COUNT); s_sync_requested = false; ui_theme_hint_set(s_hint, "选择", "进入", "返回"); ui_settings_refresh(); }
+        else if (ok_short) {
+            s_entry = rt->settings;
+            if (s_selected == BRIGHTNESS || s_selected == VOLUME || s_selected == SCREEN_OFF) show(ADJUST);
+            else if (s_selected == REST) { s_draft = s_entry; s_rest_pick = 0; show(REST_EDIT); }
+            else if (s_selected == WIFI) { app_prov_request_start(); show(PROV_FLOW); }
+            else if (s_selected == CONNECT) show(CONNECT_FLOW);
+            else if (s_selected == SYNC) {
+                if (!rt->paired) ui_theme_hint_set(s_hint, NULL, "先连接手机", "返回");
+                else if (!rt->wifi_connected) ui_theme_hint_set(s_hint, NULL, "先配网", "返回");
+                else {
+                    rt->sync_result_valid = false;
+                    s_sync_requested = true;
+                    app_sync_request_now();
+                    ui_theme_hint_set(s_hint, NULL, "同步中", "返回");
+                }
+                ui_settings_refresh();
             }
-            break;
-        default:
-            break;
         }
-        return true;
-
-    case SET_ADJUST:
-        if (ok_long) {
-            adjust_cancel();
+    } else if (ok_long) { cancel_edit(); show(LIST); }
+    else if (s_mode == ADJUST) {
+        if (ok_short) { schedule_save(); show(LIST); }
+        else if (dir) {
+            if (s_selected == SCREEN_OFF) {
+                int i = off_index(rt->settings.auto_off_s) + dir;
+                if (i >= 0 && i < 4) rt->settings.auto_off_s = OFF_STEPS[i];
+            } else {
+                uint8_t *p = s_selected == BRIGHTNESS ? &rt->settings.brightness : &rt->settings.volume;
+                int v = *p + dir;
+                if (v >= (s_selected == BRIGHTNESS ? 1 : 0) && v <= 5) *p = (uint8_t)v;
+                if (s_selected == BRIGHTNESS) ui_theme_brightness_apply(*p);
+                else app_audio_fx_play(APP_FX_BEEP);
+            }
+            ui_settings_refresh();
+        }
+    } else if (s_mode == REST_EDIT) {
+        if (dir) {
+            uint16_t *m = s_rest_pick ? &s_draft.rest_end_min : &s_draft.rest_start_min;
+            *m = (uint16_t)((*m + dir * 30 + 1440) % 1440);
         } else if (ok_short) {
-            adjust_confirm();
-        } else if (dir) {
-            adjust_apply(dir);
+            if (!s_rest_pick) s_rest_pick = 1;
+            else { rt->settings = s_draft; schedule_save(); show(LIST); }
         }
-        return true;
-
-    case SET_REST:
-        if (ok_long) {
-            save_and_apply();
-            set_mode(SET_LIST);
-        } else if (up || down) {
-            s_rest_pick ^= 1;
-            rest_refresh();
-        } else if (ok_short) {
-            uint16_t *m = s_rest_pick == 0 ? &rt->settings.rest_start_min
-                                           : &rt->settings.rest_end_min;
-            *m = (uint16_t)((*m + 30) % 1440);
-            rest_refresh();
-        }
-        return true;
-
-    case SET_CONNECT:
-        if (ok_long) set_mode(SET_LIST);
-        return true;
-
-    case SET_PROV:
-        if (ok_long) {
-            app_prov_cancel();
-            set_mode(SET_LIST);
-        } else if (ok_short && app_prov_state() == APP_PROV_FAILED) {
-            app_prov_request_start();   // 失败重试
-            prov_refresh();
-        }
-        return true;
-
-    default:
-        return false;
-    }
+        ui_settings_refresh();
+    } else if (s_mode == PROV_FLOW && ok_short && app_prov_state() == APP_PROV_FAILED) app_prov_request_start();
+    return true;
 }
 
 void ui_settings_destroy(void) {
     if (!s_settings) return;
+    cancel_edit();
     lv_obj_delete(s_settings->screen);
     lv_free(s_settings);
     s_settings = NULL;
-    s_qr = NULL;          // 画布随屏幕销毁
-    s_mode = SET_TOP;     // 回到一级
+    s_content = NULL;
 }
 
 ui_settings_t *ui_settings_create(void) {
     if (s_settings) return s_settings;
-    lv_obj_t *scr = ui_theme_screen();
-    s_settings = lv_malloc(sizeof(ui_settings_t));
-    s_settings->screen = scr;
-    ui_theme_status_bar_create(scr, &s_status);
-    s_hint_label = ui_theme_hint_create(scr);
-    ui_theme_page_dots_create(scr, &s_dots);
-
-    // ---- 一级:一个大设置按钮 ----
-    s_top_view = lv_obj_create(scr);
-    lv_obj_set_pos(s_top_view, 0, 26);
-    lv_obj_set_size(s_top_view, 240, 276);
-    lv_obj_set_style_bg_opa(s_top_view, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(s_top_view, 0, 0);
-    lv_obj_set_style_pad_all(s_top_view, 0, 0);
-    lv_obj_clear_flag(s_top_view, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *big = ui_theme_card(s_top_view, 40, 96, 160, 72, true);
-    lv_obj_set_style_radius(big, 16, 0);
-    lv_obj_t *big_label = lv_label_create(big);
-    lv_obj_set_style_text_font(big_label, &app_font_24, 0);
-    lv_obj_set_style_text_color(big_label, lv_color_hex(UI_INK), 0);
-    lv_label_set_text(big_label, "设 置");
-    lv_obj_align(big_label, LV_ALIGN_TOP_MID, 0, 10);
-    lv_obj_t *big_sub = lv_label_create(big);
-    lv_obj_set_style_text_font(big_sub, &app_font_12, 0);
-    lv_obj_set_style_text_color(big_sub, lv_color_hex(UI_INK_DIM), 0);
-    lv_label_set_text(big_sub, "OK 进入");
-    lv_obj_align(big_sub, LV_ALIGN_BOTTOM_MID, 0, -6);
-
-    // ---- 二级:设置列表 ----
-    s_list_view = lv_obj_create(scr);
-    lv_obj_set_pos(s_list_view, 0, 26);
-    lv_obj_set_size(s_list_view, 240, 276);
-    lv_obj_set_style_bg_opa(s_list_view, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(s_list_view, 0, 0);
-    lv_obj_set_style_pad_all(s_list_view, 0, 0);
-    lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
-
-    lv_obj_t *title = lv_label_create(s_list_view);
-    lv_obj_set_style_text_font(title, &app_font_24, 0);
-    lv_obj_set_style_text_color(title, lv_color_hex(UI_INK), 0);
-    lv_label_set_text(title, "设置");
-    lv_obj_set_pos(title, 12, 0);
-
-    static const char *NAMES[ITEM_COUNT] = {
-        "亮度", "音量", "自动息屏", "作息时间", "Wi-Fi 配网", "连接手机", "立即同步",
-    };
-    for (int i = 0; i < ITEM_COUNT; i++) {
-        s_rows[i] = ui_theme_card(s_list_view, 10, 34 + i * 34, 220, 30, i == s_selected);
-        lv_obj_set_style_pad_all(s_rows[i], 6, 0);
-        lv_obj_t *name = lv_label_create(s_rows[i]);
-        lv_obj_set_style_text_font(name, &app_font_12, 0);
-        lv_obj_set_style_text_color(name, lv_color_hex(UI_INK), 0);
-        lv_obj_align(name, LV_ALIGN_LEFT_MID, 0, 0);
-        lv_label_set_text(name, NAMES[i]);
-        s_values[i] = lv_label_create(s_rows[i]);
-        lv_obj_set_style_text_font(s_values[i], &app_font_12, 0);
-        lv_obj_set_style_text_color(s_values[i], lv_color_hex(UI_ACCENT), 0);
-        lv_obj_align(s_values[i], LV_ALIGN_RIGHT_MID, 0, 0);
-    }
-
-    // ---- 流程页容器(作息/连接/配网共用,按模式填充) ----
-    s_sub_view = lv_obj_create(scr);
-    lv_obj_set_pos(s_sub_view, 0, 26);
-    lv_obj_set_size(s_sub_view, 240, 276);
-    lv_obj_set_style_bg_color(s_sub_view, lv_color_hex(UI_BG), 0);
-    lv_obj_set_style_bg_opa(s_sub_view, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(s_sub_view, 0, 0);
-    lv_obj_set_style_radius(s_sub_view, 0, 0);
-    lv_obj_clear_flag(s_sub_view, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_sub_view, LV_OBJ_FLAG_HIDDEN);
-
-    for (int i = 0; i < 2; i++) {
-        s_rest_labels[i] = lv_label_create(s_sub_view);
-        lv_obj_set_style_text_font(s_rest_labels[i], &app_font_24, 0);
-        lv_obj_set_style_text_color(s_rest_labels[i], lv_color_hex(UI_INK), 0);
-        lv_obj_set_pos(s_rest_labels[i], 24, 40 + i * 56);
-    }
-    // 二维码画布(96px≈18KB)懒创建:常驻曾把 48KB LVGL 池挤爆,
-    // 进入设置列表首次渲染时绘制任务无内存可分 → 渲染任务卡死。
-    s_qr = NULL;
-    s_url_label = lv_label_create(s_sub_view);
-    lv_obj_set_style_text_font(s_url_label, &app_font_12, 0);
-    lv_obj_set_style_text_color(s_url_label, lv_color_hex(UI_INK), 0);
-    lv_obj_set_pos(s_url_label, 0, 158);
-    lv_obj_set_width(s_url_label, 240);
-    lv_obj_set_style_text_align(s_url_label, LV_TEXT_ALIGN_CENTER, 0);
-    s_token_label = lv_label_create(s_sub_view);
-    lv_obj_set_style_text_font(s_token_label, &app_font_12, 0);
-    lv_obj_set_style_text_color(s_token_label, lv_color_hex(UI_INK_DIM), 0);
-    lv_obj_set_pos(s_token_label, 0, 180);
-    lv_obj_set_width(s_token_label, 240);
-    lv_obj_set_style_text_align(s_token_label, LV_TEXT_ALIGN_CENTER, 0);
-
-    set_mode(SET_TOP);
+    s_settings = lv_malloc(sizeof(*s_settings));
+    s_settings->screen = ui_theme_screen();
+    ui_theme_status_bar_create(s_settings->screen, &s_status);
+    s_hint = ui_theme_hint_create(s_settings->screen);
+    s_selected = BRIGHTNESS;
+    s_sync_requested = false;
+    show(LIST);
     return s_settings;
 }
 
-lv_obj_t *ui_settings_screen(void) {
-    return s_settings ? s_settings->screen : NULL;
-}
-
-ui_page_dots_t *ui_settings_dots(void) {
-    return &s_dots;
-}
+lv_obj_t *ui_settings_screen(void) { return s_settings ? s_settings->screen : NULL; }

@@ -109,6 +109,9 @@ fully trusted users.
       "weeklyTokens":{ "used": 412000, "cap": null, "unit": "tokens", "resetAt": "...", "percent": null }
     }
   }],
+  "dailyTokens": { "used": 832000 },
+  "badgeName": "Example",
+  "badgeRole": "Role",
   "weather": { "code": 61, "kind": "rain", "sunrise": "06:12", "sunset": "18:05", "city": "Shanghai" },
   "assetBundle": { "version": 3 }
 }
@@ -131,6 +134,10 @@ without a cap — devices only render), `kind` (normalized weather), and quota
   timestamps clustered into activity blocks (gap ≤ 5 min splits), block
   duration = last−first timestamp, clipped to the window. Weekly window = ISO
   week (Mon 00:00 local). Tokens count input+output (cache tokens excluded).
+- `dailyTokens.used` is a local-day sum across connected accounts only when
+  every included provider has a trustworthy daily count; otherwise it is null.
+  The badge fields come from the authenticated Badge page. The device retains
+  the last snapshot when offline.
 
 ## Asset bundles (APB1)
 
@@ -157,6 +164,11 @@ sprites (16×16, 2 frames) are always the built-in generated set in P1.
 
 `http://<lan-ip>:<PORT>/portal` — password login (session cookie, 8 h). Pages:
 
+- **Badge**: edit the name and secondary role shown beside today's Token total on Home. The
+  firmware font accepts only the characters in `main/fonts/badge_name_glyphs.txt`
+  plus ASCII letters, digits, spaces, dots, underscores, and hyphens; unsupported
+  names are rejected before sync. The role accepts up to 10 supported ASCII
+  characters. An empty name shows the device placeholder.
 - **Accounts**: GLM/DeepSeek key forms (echo last 4 only), Claude collector
   status and last collection, primary-account selector (default claude),
   ChatGPT P2 placeholder.
@@ -212,6 +224,9 @@ publisher draft→publish→rollback lifecycle, and the sharp PNG pipeline.
 
 ## Not implemented in P1
 
+- NFC tap-to-join/open onboarding and the cohesive two-stage phone experience;
+  the current device SoftAP form is entered manually from Settings. See the
+  [onboarding design and handoff](../docs/specs/2026-09-24-badge-onboarding.md).
 - ChatGPT collector (no official quota API; P2 research).
 - Portal asset animation preview and snapshot preview rendering (P2).
 - Weather sprite uploads (built-in set only), per-device forced bundle re-push,

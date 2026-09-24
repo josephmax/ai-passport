@@ -12,14 +12,11 @@ typedef struct {
 ui_dash_t *ui_dash_create(void);
 void ui_dash_destroy(void);
 
-// UP/DOWN 已被 Shell 用于切页;下钻页的 UP/DOWN(三项详情间切换)由此处理。
-// 返回 true 表示事件已消费(下钻页内切换)。
+// List: UP/DOWN selects a quota; detail: switches quota.
+// False only for long OK on the list (return home).
 bool ui_dash_key(bool ok_short, bool ok_long, bool up, bool down);
 
 // 数据/状态刷新(1Hz 与事件驱动均可,幂等)。
 void ui_dash_refresh(void);
 
 lv_obj_t *ui_dash_screen(void);
-
-// 本页的页点指示器(Shell 切页时置激活态)。
-ui_page_dots_t *ui_dash_dots(void);

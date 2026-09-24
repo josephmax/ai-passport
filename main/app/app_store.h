@@ -44,6 +44,8 @@ bool app_store_save_snapshot_json(const char *json);
 
 app_focus_state_t app_store_focus(void);
 void app_store_save_focus(const app_focus_state_t *focus);
+uint8_t app_store_focus_preset(void);
+void app_store_save_focus_preset(uint8_t units);
 
 app_xp_store_t app_store_xp(void);
 void app_store_save_xp(const app_xp_store_t *xp);

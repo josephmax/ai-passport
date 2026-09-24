@@ -3,6 +3,25 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
+#include <inttypes.h>
+
+void app_fmt_daily_tokens(double value, char *buf, size_t cap) {
+    if (!isfinite(value) || value < 0) { snprintf(buf, cap, "--"); return; }
+    if (value >= 1e16) { snprintf(buf, cap, "9999T"); return; }
+    uint64_t n = (uint64_t)value;
+    if (n < 1000) { snprintf(buf, cap, "%" PRIu64, n); return; }
+    uint64_t unit = 1000;
+    int suffix = 0;
+    while (suffix < 3 && n >= unit * 1000) { unit *= 1000; suffix++; }
+    uint64_t whole = n / unit;
+    unsigned decimals = whole < 10 ? 3 : whole < 100 ? 2 : whole < 1000 ? 1 : 0;
+    unsigned scale = decimals == 3 ? 1000 : decimals == 2 ? 100 : decimals == 1 ? 10 : 1;
+    if (decimals) {
+        unsigned fraction = (unsigned)((n % unit) / (unit / scale));
+        snprintf(buf, cap, "%" PRIu64 ".%0*u%c", whole, (int)decimals, fraction, "KMBT"[suffix]);
+    } else snprintf(buf, cap, "%" PRIu64 "%c", whole, "KMBT"[suffix]);
+}
 
 void app_fmt_ago(int64_t now_ms, int64_t at_ms, char *buf, size_t cap) {
     int64_t delta = now_ms - at_ms;

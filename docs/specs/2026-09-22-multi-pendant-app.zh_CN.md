@@ -4,6 +4,7 @@
 
 - 日期：2026-09-22
 - 状态：需求已确认，待实施
+- 2026-09-24：§3（页面与导航）与 §7.1（设置页交互模型补充定稿）已被[主屏重设计规格](./2026-09-24-home-panel-redesign.zh_CN.md)取代；其余章节继续有效，冲突处以新规格为准
 - 术语：见仓库根 [`CONTEXT.md`](../CONTEXT.md)；关键决策见 [`docs/adr/`](../adr/)
 - 目标平台：FoloToy AI Passport（ESP32-C3，8MB Flash，无 PSRAM，240×320 ST7789P3，UP/DOWN/OK 三键，ES8311 音频，无震动马达）
 

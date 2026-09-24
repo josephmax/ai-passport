@@ -10,15 +10,22 @@ phone-side account and asset configuration hub.
 
 ### Navigation and pages
 
-**Top Page**:
-One of the three top-level pages cycled with UP/DOWN on the device:
-Dashboard, Pet, Settings.
-_Avoid_: main menu, home screen, tab
+**Home**:
+The device's single top-level screen: the pet scene stays resident, function
+entries are picked with the cursor; boot lands here, and a long press returns
+here from any second-level list.
+_Avoid_: top page, main menu, home screen, tab
+
+**Second-level List**:
+The umbrella term for full-screen lists entered from Home: the usage list
+(quota-kind summaries, drillable) and the settings list (option adjustment
+and flow-page entries).
+_Avoid_: second-level menu, sub-menu
 
 **Drill-down**:
-A secondary detail page for one quota kind, entered from the dashboard main
-view, with a way back.
-_Avoid_: detail popup, sub-menu
+A secondary detail page for one quota kind, entered from the usage list, with
+a way back.
+_Avoid_: detail popup
 
 ### Dashboard domain
 
@@ -37,6 +44,12 @@ _Avoid_: metric, quota type
 A one-shot capture of all quota-kind readings at a point in time, aggregated
 by the local service and pulled by the device for display.
 _Avoid_: usage data, report
+
+**Today Spend**:
+The sum of token consumption across all connected Coding accounts since
+local midnight, aggregated by the local service and delivered with the
+snapshot; shown as the Home headline.
+_Avoid_: daily burn, today's usage
 
 ### Pet domain
 
@@ -63,9 +76,9 @@ periodically; their art is configurable, 1–2 on screen.
 _Avoid_: obstacle, pickup, NPC
 
 **Focus Block**:
-One 25-minute countdown unit. A short OK press starts one, each further press
-stacks another, up to 5 concurrent; when all finish, a victory animation and
-sound play.
+One 25-minute countdown unit. The count (1–5) is preset on the Home focus
+indicator; confirming restarts a whole countdown of that total length. Each
+completed unit grants 1 XP, none for a cancelled one.
 _Avoid_: Pomodoro (fine colloquially; documents use Focus Block), focus session
 
 **XP**:

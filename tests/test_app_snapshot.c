@@ -10,6 +10,8 @@
 static const char *SAMPLE =
     "{"
     "\"schema\":1,"
+    "\"badgeName\":\"Joseph\","
+    "\"badgeRole\":\"Developer\","
     "\"generatedAt\":\"2026-09-22T06:00:00+08:00\","
     "\"accounts\":["
     " {\"provider\":\"claude\",\"label\":\"工作号\",\"quotas\":{"
@@ -27,6 +29,8 @@ static void test_parse_sample(void) {
     app_snapshot_t snap;
     assert(app_snapshot_parse(SAMPLE, strlen(SAMPLE), &snap));
     assert(snap.schema == 1);
+    assert(strcmp(snap.badge_name, "Joseph") == 0);
+    assert(strcmp(snap.badge_role, "Developer") == 0);
     assert(snap.account_count == 2);
     // 主力账户第一位
     assert(strcmp(snap.accounts[0].provider, "claude") == 0);
@@ -123,7 +127,36 @@ static void test_parse_rejects_garbage(void) {
     printf("parse_rejects_garbage ok\n");
 }
 
+static void test_daily_tokens(void) {
+    struct { double value; const char *expected; } cases[] = {
+        {0, "0"}, {832, "832"}, {999, "999"}, {1000, "1.000K"}, {1999, "1.999K"},
+        {999999, "999.9K"}, {1000000, "1.000M"}, {832000, "832.0K"},
+        {1234567, "1.234M"}, {1999999, "1.999M"}, {12345678, "12.34M"},
+        {123456789, "123.4M"}, {999999999, "999.9M"}, {1000000000, "1.000B"},
+        {1234567890, "1.234B"}, {999999999999, "999.9B"}, {1000000000000, "1.000T"},
+        {15000000000000, "15.00T"}, {9999999999999998.0, "9999T"},
+        {1e16, "9999T"}, {1e20, "9999T"}, {-1, "--"},
+    };
+    char buf[32];
+    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        app_fmt_daily_tokens(cases[i].value, buf, sizeof(buf));
+        assert(strcmp(buf, cases[i].expected) == 0);
+    }
+    const char *values[] = {"832000", "0", "null", "-1", "\"oops\"", "1e999"};
+    for (int i = 0; i < 6; i++) {
+        char json[160];
+        snprintf(json, sizeof(json), "{\"schema\":1,\"accounts\":[{\"provider\":\"claude\"}],\"dailyTokens\":{\"used\":%s}}", values[i]);
+        app_snapshot_t snap;
+        assert(app_snapshot_parse(json, strlen(json), &snap));
+        assert(snap.has_daily_tokens == (i < 2));
+        if (i == 0) assert(snap.daily_tokens == 832000);
+    }
+    app_snapshot_t legacy;
+    assert(app_snapshot_parse(SAMPLE, strlen(SAMPLE), &legacy) && !legacy.has_daily_tokens);
+}
+
 int main(void) {
+    test_daily_tokens();
     test_parse_sample();
     test_generated_at_wall_clock();
     test_permille_and_offline();

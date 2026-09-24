@@ -10,6 +10,17 @@ void app_focus_reset(app_focus_state_t *st) {
     st->end_at_ms = 0;
 }
 
+app_focus_ev_t app_focus_configure(app_focus_state_t *st, uint8_t units, int64_t now_ms) {
+    if (units > APP_FOCUS_MAX_UNITS) return APP_FOCUS_EV_NONE;
+    if (units == 0) {
+        app_focus_reset(st);
+        return APP_FOCUS_EV_CANCELLED;
+    }
+    *st = (app_focus_state_t){ .running = true, .units = units,
+        .end_at_ms = now_ms + (int64_t)units * APP_FOCUS_UNIT_MS };
+    return APP_FOCUS_EV_STARTED;
+}
+
 app_focus_ev_t app_focus_start(app_focus_state_t *st, int64_t now_ms) {
     if (st->running) return APP_FOCUS_EV_NONE;
     st->running = true;
@@ -38,7 +49,8 @@ app_focus_ev_t app_focus_poll(app_focus_state_t *st, int64_t now_ms) {
 
     // 已越过的边界数(含排空瞬间)。remaining 用向上取整:边界未到就不算。
     int64_t remaining_ms = st->end_at_ms - now_ms;
-    int remaining_units = (int)((remaining_ms + APP_FOCUS_UNIT_MS - 1) / APP_FOCUS_UNIT_MS);
+    int64_t remaining_units = remaining_ms <= 0 ? 0
+        : 1 + (remaining_ms - 1) / APP_FOCUS_UNIT_MS;
     if (remaining_units < 0) remaining_units = 0;
     if (remaining_units > st->units) remaining_units = st->units;   // 时钟回拨防御
 

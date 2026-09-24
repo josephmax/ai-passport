@@ -1,7 +1,7 @@
 // main/app/app_focus.h —— 番茄计时状态机（纯逻辑，不依赖 ESP-IDF/LVGL，可主机单测）。
 //
-// 语义见规格 §6.1：25 分钟一个单元，OK 短按启动/累加（最多 5 个并存），
-// OK 长按取消（不记经验），单元边界静默 +1 经验，全部结束才播胜利。
+// 主屏调整 n=0..5 后确认:从确认时刻重新计时 n×25 分钟;0 取消。
+// 单元边界静默 +1 经验，全部结束才播胜利。草稿独立于此持久态。
 // 状态只存绝对量（结束时间戳/单元数/已授经验数），掉电重启后用 app_focus_poll
 // 循环回放即可补齐断电期间越过的边界 —— 无需单独的"恢复"入口。
 #pragma once
@@ -9,7 +9,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef PENDANT_FAST_FOCUS
+// 调试构建(main/CMakeLists 由 PENDANT_FAST_FOCUS 环境变量注入):单元缩到
+// 10 秒,用于真机快速验证 边界授经验/胜利动画/音效 链路。正式构建不定义。
+#define APP_FOCUS_UNIT_MS (10LL * 1000LL)
+#else
 #define APP_FOCUS_UNIT_MS (25LL * 60LL * 1000LL)   // 一个番茄计时单元 25 分钟
+#endif
 #define APP_FOCUS_MAX_UNITS 5                       // 最多并存 5 个单元(125 分钟)
 
 typedef enum {
@@ -30,6 +36,10 @@ typedef struct {
 } app_focus_state_t;
 
 void app_focus_reset(app_focus_state_t *st);
+
+// Caller settles already elapsed unit boundaries before replacing the timer.
+// Invalid units leave state unchanged. External lifetime XP is never reset.
+app_focus_ev_t app_focus_configure(app_focus_state_t *st, uint8_t units, int64_t now_ms);
 
 // OK 短按的两个入口:未计时 -> start;计时中 -> add_unit。
 app_focus_ev_t app_focus_start(app_focus_state_t *st, int64_t now_ms);

@@ -4,6 +4,7 @@
 
 - Date: 2026-09-22
 - Status: requirements confirmed, pending implementation
+- 2026-09-24: §3 (pages and navigation) and §7.1 (settings interaction model) are superseded by the [Home Panel Redesign specification](./2026-09-24-home-panel-redesign.md); the remaining sections stay in force, and the new specification wins on conflict
 - Terminology: see [`docs/CONTEXT.md`](../CONTEXT.md); key decisions in [`docs/adr/`](../adr/)
 - Target: FoloToy AI Passport (ESP32-C3, 8 MB Flash, no PSRAM, 240×320 ST7789P3, UP/DOWN/OK three buttons, ES8311 audio, no vibration motor)
 

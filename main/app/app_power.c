@@ -18,6 +18,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lvgl.h"
+#include "soc/usb_serial_jtag_reg.h"
 #include "sys/time.h"
 
 static const char *TAG = "power";
@@ -33,10 +34,17 @@ static volatile bool s_screen_off;
 static int64_t s_last_activity_ms;
 static int64_t s_screen_off_at_ms;
 
-// 胜利发生在熄屏浅睡期间:电源任务把屏幕点亮让动画音效落地。
-static void wake_screen(void) {
+static int64_t now_ms(void);
+
+// 胜利发生在熄屏期间(无论由电源任务还是 LVGL 秒节拍授经验):统一经此
+// 亮屏。公开给 Shell 的胜利事件处理,修复"秒节拍先授经验却无人亮屏,
+// 动画在黑屏里播完"的路径(USB 在位延时模式下该路径是主通道)。
+void app_power_wake_screen(void) {
     if (!s_screen_off) return;
     s_screen_off = false;
+    // 亮屏同时计入一次活动:熄屏判定只认 s_last_activity_ms,不刷新的话
+    // 胜利亮屏会在下一个巡检周期(≤500ms)被重新熄掉,动画被掐断。
+    s_last_activity_ms = now_ms();
     app_runtime_publish(APP_EVENT_SCREEN_ON);
 }
 
@@ -44,7 +52,7 @@ void app_power_notify_activity(void) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     s_last_activity_ms = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-    wake_screen();
+    app_power_wake_screen();
 }
 
 bool app_power_screen_off(void) {
@@ -55,6 +63,21 @@ static int64_t now_ms(void) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
+// USB 主机在位探针:主机在位时每 1ms 发一帧 SOF,FRAM_NUM 寄存器持续递增;
+// 无主机(电池场景)则静止。相隔 3ms 两次读数有变化即在位。
+// 为什么需要它:C3 的 USB-Serial-JTAG 浅睡期间时钟全停,醒来重新枚举时
+// 主机发出的 USB 总线复位会被硬件放大成整机复位(rst:0x15
+// USB_UART_CHIP_RESET)——无声、无 panic。该复位一旦落在 NVS 提交途中,
+// 会撕断写入使分区损坏,开机恢复只能整区擦除,经验/番茄/设置全灭
+// (真机三轮复现,即"完成番茄后经验清零"根因)。主机在位时退化为延时:
+// 台式调试由 USB 供电,不差这点电;电池场景无主机,浅睡照常省电。
+static bool usb_host_attached(void) {
+    uint32_t a = REG_READ(USB_SERIAL_JTAG_FRAM_NUM_REG) & USB_SERIAL_JTAG_SOF_FRAME_INDEX;
+    vTaskDelay(pdMS_TO_TICKS(3));
+    uint32_t b = REG_READ(USB_SERIAL_JTAG_FRAM_NUM_REG) & USB_SERIAL_JTAG_SOF_FRAME_INDEX;
+    return a != b;
 }
 
 // 浅睡一片:GPIO0 低电平或定时器唤醒。USB 控制台占用导致浅睡失败时
@@ -135,7 +158,7 @@ static void power_task(void *arg) {
         app_runtime_t *rt = app_runtime();
         int64_t now = now_ms();
         int64_t idle_ms = now - s_last_activity_ms;
-        uint16_t auto_off_ms = (uint16_t)(rt->settings.auto_off_s * 1000);
+        uint32_t auto_off_ms = (uint32_t)rt->settings.auto_off_s * 1000U;
 
         if (!s_screen_off) {
             if (idle_ms >= auto_off_ms) {
@@ -158,13 +181,40 @@ static void power_task(void *arg) {
             int64_t slice = boundary < 0 ? LIGHT_SLICE_MAX_MS : boundary;
             if (slice <= 0) slice = 200;   // 已到点:马上醒去发经验/胜利
             if (slice > LIGHT_SLICE_MAX_MS) slice = LIGHT_SLICE_MAX_MS;
-            light_sleep_slice(slice);
+            int64_t pre_sleep = now_ms();
+            if (usb_host_attached()) {
+                // 主机在位:浅睡会引来 USB 总线复位腰斩整机(见探针处注释),
+                // 退化为分段延时;循环顶部的 500ms 节拍继续驱动心跳与到点判断。
+                static bool logged_usb;
+                if (!logged_usb) {
+                    ESP_LOGW(TAG, "USB 主机在位,计时浅睡退化为延时(防总线复位)");
+                    logged_usb = true;
+                }
+                vTaskDelay(pdMS_TO_TICKS(slice > 1000 ? 1000 : slice));
+            } else {
+                light_sleep_slice(slice);
+            }
             app_service_tick(now_ms());
-            if (!rt->focus.running) wake_screen();   // 胜利:亮屏播动画
+            // 时钟连续性观测点:墙钟若不随浅睡推进,单元边界永远不会到。
+            ESP_LOGI(TAG, "熄屏计时片: 请求%lldms 墙钟走%lldms 下边界还%lldms",
+                     (long long)slice, (long long)(now_ms() - pre_sleep),
+                     (long long)app_focus_next_boundary_ms(&rt->focus, now_ms()));
+            if (!rt->focus.running) app_power_wake_screen();   // 胜利:亮屏播动画
             continue;
         }
         if (now - s_screen_off_at_ms >= DEEP_SLEEP_GRACE_MS &&
             !rt->sync_in_progress) {
+            if (usb_host_attached()) {
+                // 主机在位:深睡唤醒的开机窗口同样会撞上 USB 总线复位,
+                // 可能撕断开机早期的 NVS 写入(素材版本记账)。USB 供电下
+                // 保持清醒即可;拔线后的空闲周期照常深睡。
+                static bool logged_ds;
+                if (!logged_ds) {
+                    ESP_LOGW(TAG, "USB 主机在位,暂不深睡");
+                    logged_ds = true;
+                }
+                continue;
+            }
             deep_sleep_now();   // 不返回
         }
     }

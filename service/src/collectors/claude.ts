@@ -124,6 +124,7 @@ export class ClaudeCollector implements Collector {
     return {
       ...base,
       ok: true,
+      dailyTokens: scanned <= maxBytes ? stats.dailyTokens : null,
       quotas: {
         weekly: {
           used: stats.weeklyHours,

@@ -11,6 +11,8 @@
 
 #define APP_SNAPSHOT_MAX_ACCOUNTS 6
 #define APP_SNAPSHOT_LABEL_MAX 24
+#define APP_BADGE_NAME_MAX 32
+#define APP_BADGE_ROLE_MAX 24
 
 typedef struct {
     double used;
@@ -33,6 +35,10 @@ typedef struct {
 
 typedef struct {
     int schema;
+    bool has_daily_tokens;     // absent/null is unknown, never zero
+    double daily_tokens;       // all connected accounts, local midnight to snapshot
+    char badge_name[APP_BADGE_NAME_MAX]; // UTF-8 display name; empty uses device placeholder
+    char badge_role[APP_BADGE_ROLE_MAX]; // optional role shown below the name
     int64_t generated_at_ms;   // 已折算为本地历元毫秒
     int account_count;         // 主力账户(服务端保证第一位)在前
     app_account_t accounts[APP_SNAPSHOT_MAX_ACCOUNTS];

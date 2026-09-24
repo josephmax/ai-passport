@@ -4,6 +4,7 @@
 idf_component_register(
     SRCS "main.c"
          "app/app_focus.c"
+         "app/app_home.c"
          "app/app_xp.c"
          "app/app_time.c"
          "app/app_weather.c"
@@ -33,3 +34,16 @@ idf_component_register(
                 "assets_default/pendant_victory.pcm"
                 "assets_default/pendant_beep.pcm"
 )
+
+# 调试开关:构建时设 PENDANT_FAST_FOCUS=1 把番茄单元从 25 分钟缩到 10 秒,
+# 真机快速验证完成链路(经验/胜利动画/音效)。不设置永远是产品语义。
+if(DEFINED ENV{PENDANT_FAST_FOCUS})
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE PENDANT_FAST_FOCUS=1)
+endif()
+
+# 调试对时基准:构建机以"本地墙钟编码"历元注入(真 UTC + 时区偏移),未配网
+# 设备开机偏差超 1 小时即重置。仅调试构建使用,不设置则不参与编译。
+if(DEFINED ENV{PENDANT_BOOT_EPOCH})
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE
+        PENDANT_BOOT_EPOCH=$ENV{PENDANT_BOOT_EPOCH})
+endif()

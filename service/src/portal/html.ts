@@ -9,9 +9,10 @@ export function esc(s: unknown): string {
     .replaceAll("'", "&#39;");
 }
 
-export type PortalTab = "accounts" | "prefs" | "devices" | "assets";
+export type PortalTab = "badge" | "accounts" | "prefs" | "devices" | "assets";
 
 const TABS: { id: PortalTab; label: string; href: string }[] = [
+  { id: "badge", label: "名牌", href: "/portal/badge" },
   { id: "accounts", label: "账户", href: "/portal" },
   { id: "prefs", label: "偏好", href: "/portal/prefs" },
   { id: "devices", label: "设备", href: "/portal/devices" },

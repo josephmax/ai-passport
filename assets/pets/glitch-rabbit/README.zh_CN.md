@@ -12,6 +12,10 @@
 - `gen_sprite.py` — 参数化生成脚本，产出 `base-64.png`（以及供审阅的
   `preview_4x.png`、`face_zoom_6x.png`）。后续所有动作帧必须从本脚本派生，
   以保证五官画法和调色板一致。
+- `gen_frames.py` — 用同一脸部与调色板生成跑步、打怪、睡觉和胜利帧。
+  `frames/<动作>/frame-*.png` 是可迁移的 PNG 源帧；条带图与 GIF 用于目检。
+- `validate_frames.py` — 素材进入流水线前校验尺寸、二值透明、脚底贴地、
+  调色板及允许帧数。
 
 ## 硬性约束（设备端契约）
 
@@ -33,4 +37,6 @@ run/fight 4–8 帧，sleep 2–4 帧，victory 1–4 帧，每个动作 1–10 
 
 ```bash
 python3 gen_sprite.py
+python3 gen_frames.py
+python3 validate_frames.py
 ```

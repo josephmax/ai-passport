@@ -103,6 +103,7 @@ export interface ClaudeUsageStats {
   /** End of the active 5h window, or null when no recent activity. */
   rolling5hResetAt: Date | null;
   weeklyTokens: number;
+  dailyTokens: number;
   blockCount: number;
 }
 
@@ -126,7 +127,10 @@ export function aggregateClaudeUsage(
   const weeklyHours = round1(hoursInWindow(blocks, week.start.getTime(), nowMs));
 
   let weeklyTokens = 0;
+  let dailyTokens = 0;
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   for (const e of entries) {
+    if (e.ts >= midnight && e.ts <= nowMs) dailyTokens += e.inputTokens + e.outputTokens;
     if (e.ts >= week.start.getTime() && e.ts <= nowMs) {
       weeklyTokens += e.inputTokens + e.outputTokens;
     }
@@ -149,6 +153,7 @@ export function aggregateClaudeUsage(
     rolling5hHours,
     rolling5hResetAt,
     weeklyTokens,
+    dailyTokens,
     blockCount: blocks.length,
   };
 }

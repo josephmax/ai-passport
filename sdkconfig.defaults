@@ -27,11 +27,12 @@ CONFIG_LV_DEF_REFR_PERIOD=20
 CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
+CONFIG_LV_FONT_MONTSERRAT_32=y
 # 设置页二维码(连接手机)。
 CONFIG_LV_USE_QRCODE=y
-# LVGL 内置 malloc 池大小(KB)。它是独立静态区、不与系统堆共享,配大了会白白占用 RAM。
-# 挂坠应用三个一级页常驻(宠物页控件+定时器较多),24KB 偏紧,放宽到 48KB。
-CONFIG_LV_MEM_SIZE_KILOBYTES=48
+# LVGL 内置独立静态池:主屏常驻,只保留一个二级页。使用当前版本的字节配置项;
+# 旧 KILOBYTES 配置已被 LV_MEM_SIZE 默认的 64KB 覆盖,此处保留实际生效容量。
+CONFIG_LV_MEM_SIZE=65536
 
 # --- 系统 ---
 CONFIG_FREERTOS_HZ=1000

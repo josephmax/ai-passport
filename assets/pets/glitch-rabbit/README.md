@@ -17,6 +17,11 @@ reference image is described here on purpose and **not committed**.
   (plus `preview_4x.png` and `face_zoom_6x.png` for review). All animation
   frames for the pet actions must derive from this script so the face and
   palette stay consistent.
+- `gen_frames.py` — generates run, fight, sleep, and victory frames from the
+  same face and palette. `frames/<action>/frame-*.png` are the portable PNG
+  source frames; strips and GIFs are visual review aids.
+- `validate_frames.py` — checks frame size, binary alpha, ground contact,
+  palette, and allowed frame counts before these PNGs enter the asset pipeline.
 
 ## Hard constraints (device contract)
 
@@ -40,4 +45,6 @@ transcoded server-side to RGB565A8, or baked into the default bundle under
 
 ```bash
 python3 gen_sprite.py
+python3 gen_frames.py
+python3 validate_frames.py
 ```

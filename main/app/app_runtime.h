@@ -37,8 +37,11 @@ typedef struct {
     bool paired;                      // 有令牌即视为已配对
     char service_url[96];
     bool sync_in_progress;
+    bool sync_result_valid;           // 上一次实际同步已结束
+    bool sync_last_ok;                // 快照拉取且解析成功
     // 番茄与经验的活动镜像(权威数据在 store,UI 免锁读这一份)
     app_focus_state_t focus;
+    uint8_t focus_preset;             // last confirmed count; separate NVS key keeps blob ABI
     app_xp_store_t xp;
     app_rest_window_t rest;           // 生效中的作息窗口
     app_settings_t settings;

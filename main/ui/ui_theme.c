@@ -1,162 +1,107 @@
-// main/ui/ui_theme.c —— 主题实现。
 #include "ui_theme.h"
-
 #include "app_fmt.h"
 #include "app_runtime.h"
 #include "bsp_display.h"
-#include "lvgl.h"
-
 #include <stdio.h>
 #include <sys/time.h>
 
-lv_obj_t *ui_theme_screen(void) {
-    lv_obj_t *scr = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(scr, lv_color_hex(UI_BG), 0);
-    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
-    return scr;
+lv_obj_t *ui_theme_box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color) {
+    lv_obj_t *obj = lv_obj_create(parent);
+    lv_obj_remove_style_all(obj);
+    lv_obj_set_pos(obj, x, y);
+    lv_obj_set_size(obj, w, h);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(color), 0);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    return obj;
 }
 
-lv_obj_t *ui_theme_card(lv_obj_t *parent, int x, int y, int w, int h,
-                        bool selected) {
-    lv_obj_t *card = lv_obj_create(parent);
-    lv_obj_set_pos(card, x, y);
-    lv_obj_set_size(card, w, h);
-    lv_obj_set_style_radius(card, 12, 0);
-    lv_obj_set_style_bg_color(card, lv_color_hex(selected ? UI_SURFACE_HI : UI_SURFACE), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(selected ? UI_ACCENT : UI_LINE), 0);
-    lv_obj_set_style_border_width(card, selected ? 2 : 1, 0);
-    lv_obj_set_style_pad_all(card, 8, 0);
-    lv_obj_set_scrollbar_mode(card, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-    return card;
+lv_obj_t *ui_theme_screen(void) {
+    return ui_theme_box(NULL, 0, 0, 240, 320, UI_BG);
+}
+
+lv_obj_t *ui_theme_label(lv_obj_t *parent, int x, int y, int w,
+                         const lv_font_t *font, uint32_t color, const char *text) {
+    lv_obj_t *obj = lv_label_create(parent);
+    lv_obj_set_pos(obj, x, y);
+    lv_obj_set_width(obj, w);
+    lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_text_font(obj, font, 0);
+    lv_obj_set_style_text_color(obj, lv_color_hex(color), 0);
+    lv_label_set_text(obj, text);
+    return obj;
+}
+
+void ui_theme_select(lv_obj_t *obj, bool selected) {
+    lv_obj_set_style_bg_color(obj, lv_color_hex(selected ? UI_SURFACE_HI : UI_SURFACE), 0);
+    lv_obj_set_style_border_width(obj, 0, 0);
+    lv_obj_set_style_outline_color(obj, lv_color_hex(UI_ACCENT), 0);
+    lv_obj_set_style_outline_width(obj, selected ? 2 : 0, 0);
+    lv_obj_set_style_outline_pad(obj, -2, 0);
+    // Padding stays constant when selection changes.
+    lv_obj_set_style_pad_all(obj, 0, 0);
+}
+
+lv_obj_t *ui_theme_card(lv_obj_t *parent, int x, int y, int w, int h, bool selected) {
+    lv_obj_t *obj = ui_theme_box(parent, x, y, w, h, UI_SURFACE);
+    lv_obj_set_style_radius(obj, 6, 0);
+    ui_theme_select(obj, selected);
+    return obj;
 }
 
 void ui_theme_status_bar_create(lv_obj_t *parent, ui_status_bar_t *out) {
-    out->root = lv_obj_create(parent);
-    lv_obj_set_pos(out->root, 0, 0);
-    lv_obj_set_size(out->root, 240, 24);
-    lv_obj_set_style_bg_opa(out->root, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(out->root, 0, 0);
-    lv_obj_set_style_pad_all(out->root, 0, 0);
-    lv_obj_clear_flag(out->root, LV_OBJ_FLAG_SCROLLABLE);
-
-    out->sync = lv_label_create(out->root);
-    lv_obj_set_style_text_font(out->sync, &app_font_12, 0);
-    lv_obj_set_style_text_color(out->sync, lv_color_hex(UI_INK_DIM), 0);
-    lv_label_set_text(out->sync, "");
-    lv_obj_align(out->sync, LV_ALIGN_LEFT_MID, 6, 0);
-
-    out->wifi = lv_label_create(out->root);
-    lv_obj_set_style_text_font(out->wifi, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(out->wifi, lv_color_hex(UI_INK_DIM), 0);
-    lv_label_set_text(out->wifi, LV_SYMBOL_CLOSE);
-    lv_obj_align(out->wifi, LV_ALIGN_RIGHT_MID, -58, 0);
-
-    out->battery = lv_label_create(out->root);
-    lv_obj_set_style_text_font(out->battery, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(out->battery, lv_color_hex(UI_INK_DIM), 0);
-    lv_label_set_text(out->battery, "");
-    lv_obj_align(out->battery, LV_ALIGN_RIGHT_MID, -6, 0);
+    out->root = ui_theme_box(parent, 10, 4, 220, 16, UI_BG);
+    out->sync = ui_theme_label(out->root, 0, 1, 151, &app_font_12, UI_INK_DIM, "");
+    out->wifi = ui_theme_label(out->root, 164, 0, 18, &lv_font_montserrat_14, UI_INK_DIM, LV_SYMBOL_WIFI);
+    out->battery = ui_theme_label(out->root, 183, 1, 37, &app_font_12, UI_INK_DIM, "");
+    lv_obj_set_style_text_align(out->battery, LV_TEXT_ALIGN_RIGHT, 0);
 }
 
 void ui_theme_status_bar_refresh(ui_status_bar_t *bar) {
     app_runtime_t *rt = app_runtime();
-    char buf[40];
-
-    if (!rt->snap_valid) {
-        snprintf(buf, sizeof(buf), "%s", rt->paired ? "等待同步" : "未配网");
-    } else {
+    char buf[48];
+    if (!rt->snap_valid) snprintf(buf, sizeof(buf), "%s", rt->paired ? "等待同步" : "未配网");
+    else {
         struct timeval tv;
         gettimeofday(&tv, NULL);
-        int64_t now_ms = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-        char ago[24];
-        app_fmt_ago(now_ms, rt->snap.generated_at_ms, ago, sizeof(ago));
-        int offline_h = app_snapshot_offline_hours(rt->snap.generated_at_ms, now_ms);
-        if (offline_h >= 1) {
-            snprintf(buf, sizeof(buf), "离线 %d 小时", offline_h);
+        int64_t now = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+        if (!rt->wifi_connected) {
+            int hours = app_snapshot_offline_hours(rt->snap.generated_at_ms, now);
+            snprintf(buf, sizeof(buf), "离线 %d 小时", hours);
         } else {
-            snprintf(buf, sizeof(buf), "%s", ago);
+            char age[24];
+            app_fmt_ago(now, rt->snap.generated_at_ms, age, sizeof(age));
+            snprintf(buf, sizeof(buf), "同步于 %s", age);
         }
     }
     lv_label_set_text(bar->sync, buf);
+    lv_obj_set_style_text_color(bar->sync, lv_color_hex(rt->snap_valid && !rt->wifi_connected ? UI_WARN : UI_INK_DIM), 0);
     lv_label_set_text(bar->wifi, rt->wifi_connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
-
-    int soc = app_runtime()->battery_soc;   // 读缓存,渲染路径无 I2C
-    if (soc < 0) {
-        lv_obj_add_flag(bar->battery, LV_OBJ_FLAG_HIDDEN);   // 读失败优雅隐藏
-    } else {
+    if (rt->battery_soc < 0) lv_obj_add_flag(bar->battery, LV_OBJ_FLAG_HIDDEN);
+    else {
         lv_obj_clear_flag(bar->battery, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text_fmt(bar->battery, "%d%%", soc);
+        lv_label_set_text_fmt(bar->battery, "%d%%", rt->battery_soc);
     }
 }
 
-// 每屏各建一份(静态缓存版会在切页回访时重复创建泄漏)。
-void ui_theme_page_dots_create(lv_obj_t *parent, ui_page_dots_t *out) {
-    out->holder = lv_obj_create(parent);
-    lv_obj_set_pos(out->holder, 96, 7);
-    lv_obj_set_size(out->holder, 48, 12);
-    lv_obj_set_style_bg_opa(out->holder, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(out->holder, 0, 0);
-    lv_obj_set_style_pad_all(out->holder, 0, 0);
-    lv_obj_set_flex_flow(out->holder, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_flex_main_place(out->holder, LV_FLEX_ALIGN_SPACE_EVENLY, 0);
-    lv_obj_clear_flag(out->holder, LV_OBJ_FLAG_SCROLLABLE);
-    for (int i = 0; i < 3; i++) {
-        out->dots[i] = lv_obj_create(out->holder);
-        lv_obj_set_size(out->dots[i], 8, 8);
-        lv_obj_set_style_radius(out->dots[i], LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(out->dots[i], 0, 0);
-        lv_obj_set_style_bg_opa(out->dots[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_color(out->dots[i], lv_color_hex(UI_LINE), 0);
-    }
+lv_obj_t *ui_theme_hint_create(lv_obj_t *parent) {
+    lv_obj_t *obj = ui_theme_label(parent, 0, 303, 240, &app_font_12, UI_INK_DIM, "");
+    lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_CENTER, 0);
+    return obj;
 }
 
-void ui_theme_page_dots_set(ui_page_dots_t *dots, int active) {
-    if (!dots || !dots->holder) return;
-    for (int i = 0; i < 3; i++) {
-        lv_obj_set_style_bg_color(dots->dots[i],
-            lv_color_hex(i == active ? UI_ACCENT : UI_LINE), 0);
-    }
+void ui_theme_hint_set(lv_obj_t *hint, const char *updown, const char *ok, const char *oklong) {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%s%s%s%s%s%s%s%s",
+             updown ? "上下 " : "", updown ? updown : "",
+             updown && ok ? "  " : "", ok ? "OK " : "", ok ? ok : "",
+             (updown || ok) && oklong ? "  " : "", oklong ? "长按 " : "", oklong ? oklong : "");
+    lv_label_set_text(hint, buf);
 }
 
 void ui_theme_brightness_apply(uint8_t level) {
-    // 5 档 → 背光百分比;1 档也要可见。level 收敛到 1..5。
-    static const uint8_t MAP[6] = { 0, 8, 25, 45, 70, 100 };
+    static const uint8_t MAP[6] = {0, 8, 25, 45, 70, 100};
     if (level < 1) level = 1;
     if (level > 5) level = 5;
     bsp_display_backlight(MAP[level]);
-}
-
-
-// 底部按键提示栏:高度与样式全应用统一,只有内容随场景变。
-lv_obj_t *ui_theme_hint_create(lv_obj_t *parent) {
-    lv_obj_t *hint = lv_label_create(parent);
-    lv_obj_set_style_text_font(hint, &app_font_12, 0);
-    lv_obj_set_style_text_color(hint, lv_color_hex(UI_INK_DIM), 0);
-    lv_obj_set_pos(hint, 0, 304);
-    lv_obj_set_width(hint, 240);
-    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(hint, LV_LABEL_LONG_CLIP);
-    return hint;
-}
-
-void ui_theme_hint_set(lv_obj_t *hint, const char *updown, const char *ok,
-                       const char *oklong) {
-    if (!hint) return;
-    char buf[96];
-    size_t n = 0;
-    buf[0] = '\0';
-    // snprintf 截断时返回"本应写入"的长度,必须收敛到剩余空间,
-    // 否则 buf+n 越界、sizeof(buf)-n 下溢。
-    if (updown) {
-        int w = snprintf(buf + n, sizeof(buf) - n, "%s上/下：%s", n ? "，" : "", updown);
-        if (w > 0) n += (size_t)w < sizeof(buf) - n ? (size_t)w : sizeof(buf) - n - 1;
-    }
-    if (ok) {
-        int w = snprintf(buf + n, sizeof(buf) - n, "%sOK：%s", n ? "，" : "", ok);
-        if (w > 0) n += (size_t)w < sizeof(buf) - n ? (size_t)w : sizeof(buf) - n - 1;
-    }
-    if (oklong) snprintf(buf + n, sizeof(buf) - n, "%s长按：%s", n ? "，" : "", oklong);
-    lv_label_set_text(hint, buf);
 }

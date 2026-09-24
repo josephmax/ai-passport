@@ -17,6 +17,8 @@ export interface CollectorResult {
   label: string;
   ok: boolean;
   collectedAt: string;
+  /** Actual tokens since host-local midnight; absent/null means unavailable. */
+  dailyTokens?: number | null;
   error?: string;
   quotas?: {
     weekly?: QuotaReading;

@@ -16,3 +16,6 @@ void app_power_notify_activity(void);
 
 // 当前是否处于熄屏状态(Shell 据此暂停宠物动画等高耗绘制)。
 bool app_power_screen_off(void);
+
+// 胜利等需要亮屏的场合由事件侧调用:发布 SCREEN_ON(背光+宠物页恢复)。
+void app_power_wake_screen(void);

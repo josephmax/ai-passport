@@ -37,13 +37,36 @@ void app_service_init(void) {
         nvs_close(h);
     }
     if (saved >= APP_TIME_PLAUSIBLE_S * 1000) {
-        struct timeval tv = { .tv_sec = saved / 1000, .tv_usec = 0 };
-        settimeofday(&tv, NULL);
-        ESP_LOGI(TAG, "恢复最后已知墙钟: %lld", (long long)(saved / 1000));
+        // 仅当影子比当前系统钟更新才覆盖:深睡唤醒后 RTC 钟已自然推进,
+        // 无条件回拨会造成"越睡越慢"的时钟漂移(曾致白天误判为作息时段)。
+        struct timeval cur;
+        gettimeofday(&cur, NULL);
+        if ((int64_t)cur.tv_sec * 1000 + cur.tv_usec / 1000 < saved) {
+            struct timeval tv = { .tv_sec = saved / 1000, .tv_usec = 0 };
+            settimeofday(&tv, NULL);
+            ESP_LOGI(TAG, "恢复最后已知墙钟: %lld", (long long)(saved / 1000));
+        } else {
+            ESP_LOGI(TAG, "系统钟已新于影子,保留 RTC 推进结果");
+        }
     }
+#ifdef PENDANT_BOOT_EPOCH
+    // 调试构建专用(编译机注入本地历元):未配网设备的钟从未校准,与基准
+    // 偏差超 1 小时即重置。正式构建不定义此宏;配网后由服务校时接管。
+    {
+        struct timeval cur;
+        gettimeofday(&cur, NULL);
+        int64_t diff = (int64_t)cur.tv_sec - (int64_t)PENDANT_BOOT_EPOCH;
+        if (diff > 3600 || diff < -3600) {
+            struct timeval tv = { .tv_sec = PENDANT_BOOT_EPOCH, .tv_usec = 0 };
+            settimeofday(&tv, NULL);
+            ESP_LOGW(TAG, "调试对时: 时钟偏差%llds,已重置为构建基准",
+                     (long long)diff);
+        }
+    }
+#endif
 }
 
-void app_service_tick(int64_t now_local_ms) {
+static void service_run(int64_t now_local_ms, int configure_units) {
     if (!s_lock) return;
     int64_t now_s = now_local_ms / 1000;
     bool focus_changed = false, xp_changed = false, victory = false;
@@ -63,12 +86,24 @@ void app_service_tick(int64_t now_local_ms) {
                                 app_time_week_index(now_s));
             }
             app_xp_add_unit(&rt->xp);
+            // 完成链路观测点:经验是否真的入账(规格 §11)。
+            ESP_LOGI(TAG, "番茄单元完成: 经验+1 总=%u 今=%u 周=%u",
+                     (unsigned)rt->xp.total_xp, (unsigned)rt->xp.today_count,
+                     (unsigned)rt->xp.week_count);
             xp_changed = true;
             focus_changed = true;
         } else if (ev == APP_FOCUS_EV_VICTORY) {
+            ESP_LOGI(TAG, "番茄全部完成: 发布胜利事件");
             victory = true;
             focus_changed = true;
         }
+    }
+    if (configure_units >= 0 && configure_units <= APP_FOCUS_MAX_UNITS) {
+        app_focus_configure(&rt->focus, (uint8_t)configure_units, now_local_ms);
+        rt->focus_preset = (uint8_t)configure_units;
+        app_store_save_focus_preset(rt->focus_preset);
+        focus_changed = true;
+        victory = false; // A confirmed replacement supersedes the old finish event.
     }
     if (focus_changed) app_store_save_focus(&rt->focus);
     if (xp_changed) app_store_save_xp(&rt->xp);
@@ -107,6 +142,14 @@ void app_service_tick(int64_t now_local_ms) {
     if (focus_changed) app_runtime_publish(APP_EVENT_FOCUS_CHANGED);
     if (victory) app_runtime_publish(APP_EVENT_FOCUS_VICTORY);
     if (xp_changed) app_runtime_publish(APP_EVENT_XP_CHANGED);
+}
+
+void app_service_tick(int64_t now_local_ms) {
+    service_run(now_local_ms, -1);
+}
+
+void app_service_configure_focus(uint8_t units, int64_t now_local_ms) {
+    if (units <= APP_FOCUS_MAX_UNITS) service_run(now_local_ms, units);
 }
 
 void app_service_flush_clock(void) {

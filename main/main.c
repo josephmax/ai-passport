@@ -1,7 +1,7 @@
 // main/main.c —— 多合一挂坠应用入口。
 //
 // 启动顺序:BSP 显示/LVGL → 存储(NVS) → 运行时状态恢复(设置/经验/
-// 番茄/最后快照) → 素材区(LittleFS+默认包) → 音效 → 外壳(三页+按键)
+// 番茄/最后快照) → 素材区(LittleFS+默认包) → 音效 → 外壳(主屏+按键)
 // → 周期服务 → 电源管理(息屏/浅睡/深睡)。
 #include "app_audio_fx.h"
 #include "app_assets.h"
@@ -35,16 +35,17 @@ static void runtime_restore(void) {
     rt->rest.end_min = rt->settings.rest_end_min;
     rt->xp = app_store_xp();
     rt->focus = app_store_focus();
+    rt->focus_preset = app_store_focus_preset();
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
     int64_t now = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
     if (rt->focus.running &&
         (rt->focus.units == 0 || rt->focus.units > APP_FOCUS_MAX_UNITS ||
-         rt->focus.end_at_ms <= now - 60 * 1000 ||
+         rt->focus.xp_granted > rt->focus.units || rt->focus.end_at_ms <= 0 ||
          rt->focus.end_at_ms > now + (int64_t)APP_FOCUS_MAX_UNITS * APP_FOCUS_UNIT_MS + 60 * 1000)) {
         // 脏数据(掉电瞬间/版本残留):丢弃计时,经验账本不动。
-        ESP_LOGW(TAG, "番茄状态异常,丢弃(剩余过旧或越界)");
+        ESP_LOGW(TAG, "番茄状态异常,丢弃(字段越界)");
         app_focus_cancel(&rt->focus);
         app_store_save_focus(&rt->focus);
     }

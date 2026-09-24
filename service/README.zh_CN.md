@@ -106,6 +106,9 @@ Key；配置中心回显仅显示尾 4 位。若要把主机暴露给不完全�
       "weeklyTokens":{ "used": 412000, "cap": null, "unit": "tokens", "resetAt": "...", "percent": null }
     }
   }],
+  "dailyTokens": { "used": 832000 },
+  "badgeName": "Example",
+  "badgeRole": "Role",
   "weather": { "code": 61, "kind": "rain", "sunrise": "06:12", "sunset": "18:05", "city": "上海" },
   "assetBundle": { "version": 3 }
 }
@@ -125,6 +128,9 @@ null——设备只渲染）、`kind`（归一化后的天气）、降级口径�
 - Claude 用量小时采用简化 ccusage 模型：按会话文件把消息时间戳聚成
   活动块（间隔 > 5 分钟分块），块时长 = 末条−首条时间戳，再裁剪到窗口。
   周窗口 = ISO 周（本地周一 00:00）。Token 统计 input+output（不含缓存）。
+- `dailyTokens.used` 是已连接账户本地今日的合计；只有所有纳入的服务商都能
+  提供可信今日读数时才给数值，否则为 null。名牌字段来自鉴权的名牌页。
+  设备离线时沿用上次快照。
 
 ## 皮肤包（APB1）
 
@@ -151,6 +157,10 @@ victory ≤4 帧）、地图 240×160、装扮 24×24（≤8 个）、帧率 1�
 
 `http://<局域网IP>:<PORT>/portal` —— 口令登录（session cookie，8 小时）。页签：
 
+- **名牌**：编辑主屏中与今日 Token 并排的姓名和下方身份。固件字库支持
+  `main/fonts/badge_name_glyphs.txt` 中的汉字，以及英文字母、数字、空格、
+  句点、下划线和连字符；不支持的姓名在同步前拒绝。身份最多 10 个受支持的
+  ASCII 字符；姓名留空显示设备占位文案。
 - **账户**：GLM/DeepSeek Key 表单（回显仅尾 4 位）、Claude 采集器状态与
   最近采集时间、主力账户单选（默认 claude）、ChatGPT P2 占位卡。
 - **偏好**：城市选择（内置城市表 + 自定义经纬度）、周 Token 预算
@@ -203,6 +213,8 @@ service/
 
 ## P1 未实现
 
+- NFC 轻碰配网／打开入口及连贯的两阶段手机流程；目前需从设备设置手动进入
+  SoftAP 表单。见[接入设计与交接](../docs/specs/2026-09-24-badge-onboarding.zh_CN.md)。
 - ChatGPT 采集器（无官方额度接口，P2 调研）。
 - 配置中心素材动画预览与快照预览渲染（P2）。
 - 天气精灵上传（仅内置）、按设备强制重下发皮肤包、多设备分组（P3+）、

@@ -43,10 +43,12 @@ test("snapshot: schema field-by-field matches spec §4.3", () => {
     results: new Map([["claude", claudeOk]]),
     connected: new Set<ProviderId>(["claude"]),
     weather,
-    settings: { primaryAccount: "claude", weeklyTokenBudget: null },
+    settings: { primaryAccount: "claude", weeklyTokenBudget: null, badgeName: "Joseph", badgeRole: "Developer" },
     assetBundleVersion: 3,
   });
   assert.equal(snap.schema, 1);
+  assert.equal(snap.badgeName, "Joseph");
+  assert.equal(snap.badgeRole, "Developer");
   assert.match(snap.generatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/);
   assert.equal(Date.parse(snap.generatedAt), now.getTime());
   const a = snap.accounts[0]!;
@@ -138,4 +140,25 @@ test("snapshot: percent math", () => {
   assert.equal(computePercent(5, null), null);
   assert.equal(computePercent(null, 100), null);
   assert.equal(computePercent(5, 0), null);
+});
+
+test("snapshot: daily total includes all connected accounts regardless of primary", () => {
+  const now = new Date(2026, 8, 24, 12);
+  const results = new Map<string, CollectorResult>([
+    ["claude", { provider: "claude", label: "Claude", ok: true, collectedAt: now.toISOString(), dailyTokens: 832000 }],
+    ["glm", { provider: "glm", label: "GLM", ok: true, collectedAt: now.toISOString(), dailyTokens: 100000 }],
+    ["deepseek", { provider: "deepseek", label: "DS", ok: true, collectedAt: now.toISOString(), dailyTokens: 99999 }],
+  ]);
+  const input = { now, results, connected: new Set<"claude" | "glm">(["claude", "glm"]), weather: null,
+    settings: { primaryAccount: "glm", weeklyTokenBudget: null }, assetBundleVersion: 1 };
+  assert.deepEqual(buildSnapshot(input).dailyTokens, { used: 932000 });
+  for (const dailyTokens of [undefined, null, -1, NaN, Infinity]) {
+    results.set("glm", { ...results.get("glm")!, dailyTokens });
+    assert.deepEqual(buildSnapshot(input).dailyTokens, { used: null });
+  }
+  results.set("glm", { ...results.get("glm")!, dailyTokens: 0, ok: false });
+  assert.equal(buildSnapshot(input).dailyTokens.used, null);
+  results.set("glm", { ...results.get("glm")!, dailyTokens: 0, ok: true });
+  assert.equal(buildSnapshot(input).dailyTokens.used, 832000);
+  assert.equal(buildSnapshot({ ...input, connected: new Set() }).dailyTokens.used, null);
 });
