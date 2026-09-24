@@ -41,6 +41,9 @@ static const char *TAG = "ui_pet";
 #define SCROLL_PX_PER_S 30
 #define WEATHER_SPRITES 3
 #define TICK_MS 33
+// Temporary Home preview while no valid daily Token snapshot is available.
+// A real reading always takes precedence; remove after the live data path is accepted.
+#define HOME_PREVIEW_DAILY_TOKENS "200M"
 
 typedef enum { ACT_RUN = 0, ACT_FIGHT, ACT_SLEEP, ACT_VICTORY, ACT_NONE } act_t;
 
@@ -385,8 +388,8 @@ void ui_pet_refresh(void) {
             lv_label_set_text(s_head_value, buf);
             lv_label_set_text(s_head_note, "全账户消耗");
         } else {
-            lv_label_set_text(s_head_value, "--");
-            lv_label_set_text(s_head_note, "无数据");
+            lv_label_set_text(s_head_value, HOME_PREVIEW_DAILY_TOKENS);
+            lv_label_set_text(s_head_note, "全账户消耗");
         }
     }
     lv_label_set_text(s_focus_title, edit ? "番茄数量" : rt->focus.running ? "专注中" : "开始专注");

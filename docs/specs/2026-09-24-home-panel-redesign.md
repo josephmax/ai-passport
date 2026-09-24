@@ -157,7 +157,11 @@ to the end field then saves, while long OK discards the draft.
 midnight. Claude logs provide this reading. If any connected collector cannot
 supply a valid daily token count (including providers exposing only balance), the
 aggregate is `null`; the device shows an unavailable value rather than a partial
-total. Older cached snapshots without this field also show unavailable. Actual
+total in the normal product behavior. Older cached snapshots without this field
+also show unavailable in the normal behavior. A temporary preview override in
+`main/ui/ui_pet.c` currently displays `200M` when no valid daily reading exists,
+without adding a label on the screen; this is not a measured total and must be
+removed once live data is accepted. Actual
 zero remains zero, and an offline device retains the last snapshot. The unit rule
 uses K/M/B/T, so 1,234,567,890 renders as `1.234B`.
 
