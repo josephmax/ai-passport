@@ -14,6 +14,7 @@ test("Codex quota: use window duration, never assume primary means five hours", 
   assert.equal(sample.quotas.weekly?.used, 42);
   assert.equal(sample.quotas.rolling5h?.used, 7);
   assert.equal(sample.quotas.weekly?.unit, "%");
+  assert.equal(Date.parse(sample.quotas.weekly!.resetAt!), now.getTime() + 86400_000);
 });
 
 test("Codex quota: rejects stale, future, expired, malformed, and non-Codex samples", () => {

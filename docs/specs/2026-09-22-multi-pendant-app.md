@@ -65,23 +65,25 @@ play the victory animation + sound, and stay there.
 
 ### 4.1 Main view
 
-Three summary cards (stacked vertically, each about 1/3 of the screen), fed
-by the **primary account** (selectable in the config portal, default Claude):
+Four compact summary cards, with the first three fed by the **primary account**
+(selectable in the config portal, default Local Agents):
 
 1. **Weekly quota**: large percentage + used/cap small text + reset countdown (days)
 2. **5-hour quota**: percentage + remaining time in the current window
 3. **Weekly tokens**: percentage (denominator = the weekly token budget set
    in the portal; if unset, show the raw value)
+4. **Agents**: number of local Agent sources with a separate log reading
 
 The selected card is highlighted; OK drills in. Top status bar: sync time
 (`x min ago`), Wi-Fi icon, battery.
 
 ### 4.2 Drill-down pages
 
-UP/DOWN switches among the three quota details (without returning to the top
-level). Each detail = the primary account's numbers for that dimension plus a
-per-account row list for the same dimension (one row per connected account:
-provider wordmark + percentage/value). OK long-press returns to main.
+UP/DOWN switches among the four cards at the top level. The first three details
+show the primary account's numbers plus a per-account row list for the same
+dimension. The Agents detail shows one local source at a time: daily/weekly
+Tokens and its 5-hour/weekly quota, with UP/DOWN switching sources. OK
+long-press returns to the cards.
 
 ### 4.3 Usage snapshot (service → device)
 

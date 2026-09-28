@@ -80,6 +80,7 @@ test("snapshot service: midnight hides yesterday and last week's counts until co
     collect: async () => { calls++;
       if (calls === 1) return { provider: "local", label: "Local", ok: true,
         collectedAt: now.toISOString(), dailyTokens: 42,
+        agentUsage: [{ agent: "pi", dailyTokens: 42, weeklyTokens: 300 }],
         quotas: { weeklyTokens: { used: 300, cap: null, unit: "tokens", resetAt: null } } };
       return new Promise(resolve => { release = resolve; });
     }, status: () => ({ provider: "local", connected: true,
@@ -93,6 +94,8 @@ test("snapshot service: midnight hides yesterday and last week's counts until co
     now = new Date(2026, 8, 28, 0, 0, 1);
     const interim = await service.get();
     assert.equal(interim.dailyTokens.used, null);
+    assert.equal(interim.agents[0]?.dailyTokens, null);
+    assert.equal(interim.agents[0]?.weeklyTokens, null);
     assert.equal(interim.accounts[0]?.quotas.weeklyTokens, null);
     assert.equal(calls, 2);
     release!({ provider: "local", label: "Local", ok: true,

@@ -100,7 +100,10 @@ bool app_store_save_snapshot_json(const char *json) {
 }
 
 bool app_store_badge(app_badge_t *out) {
-    return read_blob(KEY_BADGE, out, sizeof(*out));
+    if (!read_blob(KEY_BADGE, out, sizeof(*out))) return false;
+    out->name[sizeof(out->name) - 1] = '\0';
+    out->role[sizeof(out->role) - 1] = '\0';
+    return true;
 }
 
 void app_store_save_badge(const app_badge_t *badge) {

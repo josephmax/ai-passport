@@ -6,6 +6,7 @@ import { readdir, stat, open } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { Collector, CollectorResult, CollectorStatus, QuotaReading } from "./types.js";
+import { localIsoWithOffset } from "../util/time.js";
 
 export const QUOTA_MAX_AGE_MS = 60 * 60_000;
 const TAIL_BYTES = 1024 * 1024;
@@ -30,7 +31,7 @@ export function parseCodexQuota(lines: string, now: Date): Sample | null {
         if (typeof reset !== "number" || !Number.isFinite(reset) || reset * 1000 <= now.getTime() ||
           !Number.isFinite(new Date(reset * 1000).getTime())) continue;
         const reading: QuotaReading = { used, cap: 100, unit: "%",
-          resetAt: new Date(reset * 1000).toISOString(), basis: "observed:codex-rate-limit" };
+          resetAt: localIsoWithOffset(new Date(reset * 1000)), basis: "observed:codex-rate-limit" };
         if (minutes >= 299 && minutes <= 301) quotas.rolling5h = reading;
         else if (minutes >= 10079 && minutes <= 10081) quotas.weekly = reading;
       }
