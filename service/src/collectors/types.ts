@@ -1,11 +1,11 @@
 /** Collector plugin contracts. One failing collector must never break the snapshot. */
 
-export type ProviderId = "claude" | "glm" | "deepseek" | "chatgpt";
+export type ProviderId = "local" | "claude" | "glm" | "deepseek" | "chatgpt";
 
 export interface QuotaReading {
   used: number | null;
   cap: number | null;
-  unit: "h" | "tokens" | "CNY";
+  unit: "h" | "tokens" | "CNY" | "requests" | "%";
   /** RFC3339 local-offset string, or null when the upstream gives no reset time. */
   resetAt: string | null;
   /** Honest labeling for degraded providers, e.g. "balance-remaining". */
@@ -19,6 +19,8 @@ export interface CollectorResult {
   collectedAt: string;
   /** Actual tokens since host-local midnight; absent/null means unavailable. */
   dailyTokens?: number | null;
+  /** Independent finance reading; never projected into a token quota. */
+  balance?: { remaining: number; currency: string; basis: string };
   error?: string;
   quotas?: {
     weekly?: QuotaReading;

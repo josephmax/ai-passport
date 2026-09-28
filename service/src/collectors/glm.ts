@@ -2,13 +2,9 @@
  * GLM (Zhipu bigmodel.cn) collector — best effort.
  *
  * P1 status: no officially documented public "coding plan quota" endpoint.
- * We try the community-known coding-plan resource endpoint (URL configurable
- * in data/config.json) and map the response **heuristically but honestly**:
- * numbers are extracted only when a recognizable used/total (or remaining)
- * pair exists; anything unrecognized degrades to ok:false — we never invent
- * quota values. Response shapes seen in the wild include
- * `{data:{usageHours,totalHours}}`, `{data:{usedPrompts,totalPrompts}}` and
- * simple `{data:{remaining,...}}` balances.
+ * The legacy configurable endpoint is experimental and not live-verified.
+ * Only explicit hour/prompt units plus a recognized window can be displayed.
+ * Generic used/total pairs and bare remaining values have unknown semantics.
  */
 
 import type { Collector, CollectorResult, CollectorStatus } from "./types.js";
@@ -18,10 +14,11 @@ export const DEFAULT_GLM_CODING_PLAN_URL =
   "https://open.bigmodel.cn/api/paas/openapi/resource/coding-plan";
 
 export interface GlmExtract {
-  kind: "hours" | "prompts" | "remaining";
+  kind: "hours" | "prompts" | "remaining" | "unknown";
   used: number | null;
   total: number | null;
   remaining: number | null;
+  windowMinutes?: number;
 }
 
 const USED_KEYS = /^(used|usage|used_?hours|usage_?hours|used_?prompts)$/i;
@@ -55,7 +52,9 @@ export function mapGlmResponse(json: unknown): GlmExtract | null {
     if (used !== null && total !== null) {
       const hours = /hours?/i.test(Object.keys(obj).join(" "));
       const prompts = /prompts?/i.test(Object.keys(obj).join(" "));
-      return { kind: hours ? "hours" : prompts ? "prompts" : "hours", used, total, remaining };
+      const minutes = obj.window_minutes ?? obj.windowMinutes;
+      return { kind: hours ? "hours" : prompts ? "prompts" : "unknown", used, total, remaining,
+        ...(isNum(minutes) ? { windowMinutes: minutes } : {}) };
     }
     if (remaining !== null) {
       return { kind: "remaining", used: null, total: null, remaining };
@@ -119,6 +118,11 @@ export class GlmCollector implements Collector {
         this.lastError = "unrecognized response shape (quota values not extracted)";
         return { ...base, error: this.lastError };
       }
+      if ((mapped.kind !== "hours" && mapped.kind !== "prompts") ||
+          (mapped.windowMinutes !== 300 && mapped.windowMinutes !== 10080)) {
+        this.lastError = "quota values have no verified unit or window";
+        return { ...base, error: this.lastError };
+      }
       this.lastOkAt = now;
       this.lastError = null;
       if (mapped.kind === "hours" && mapped.used !== null && mapped.total !== null) {
@@ -127,7 +131,7 @@ export class GlmCollector implements Collector {
           ok: true,
           quotas: {
             // GLM coding plans are 5h-window based -> rolling5h slot
-            rolling5h: {
+            [mapped.windowMinutes === 10080 ? "weekly" : "rolling5h"]: {
               used: mapped.used,
               cap: mapped.total,
               unit: "h",
@@ -142,29 +146,21 @@ export class GlmCollector implements Collector {
           ...base,
           ok: true,
           quotas: {
-            rolling5h: {
+            [mapped.windowMinutes === 10080 ? "weekly" : "rolling5h"]: {
               used: mapped.used,
               cap: mapped.total,
-              unit: "tokens",
+              unit: "requests",
               resetAt: null,
               basis: "api:glm-coding-plan-prompts",
             },
           },
         };
       }
-      // remaining balance only
+      // A bare remaining value has no proven unit or interval.
       return {
         ...base,
-        ok: true,
-        quotas: {
-          weeklyTokens: {
-            used: mapped.remaining,
-            cap: null,
-            unit: "CNY",
-            resetAt: null,
-            basis: "balance-remaining",
-          },
-        },
+        ok: false,
+        error: "remaining value has no verified unit or quota window",
       };
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err);

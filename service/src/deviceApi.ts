@@ -23,7 +23,7 @@ export interface DeviceApiDeps {
 export function registerDeviceApi(app: FastifyInstance, deps: DeviceApiDeps): void {
   const { devices, snapshots, publisher } = deps;
 
-  app.get("/api/health", async () => ({ ok: true, now: new Date().toISOString() }));
+  app.get("/api/health", async () => ({ ok: true, service: "ai-passport-local-service", now: new Date().toISOString() }));
 
   app.post<{ Body: { code?: unknown; deviceName?: unknown } }>(
     "/api/pair",

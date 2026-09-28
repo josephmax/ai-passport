@@ -107,8 +107,7 @@ test("snapshot: percentages computed server-side, null without cap", () => {
   const ds = snap.accounts[1]!;
   assert.equal(ds.quotas.weekly, null);
   assert.equal(ds.quotas.rolling5h, null);
-  assert.equal(ds.quotas.weeklyTokens!.percent, null); // no cap
-  assert.equal(ds.quotas.weeklyTokens!.basis, "balance-remaining");
+  assert.equal(ds.quotas.weeklyTokens, null); // currency never becomes Tokens
 });
 
 test("snapshot: failed collector included with error and null quotas, never breaks the build", () => {
@@ -161,4 +160,39 @@ test("snapshot: daily total includes all connected accounts regardless of primar
   results.set("glm", { ...results.get("glm")!, dailyTokens: 0, ok: true });
   assert.equal(buildSnapshot(input).dailyTokens.used, 832000);
   assert.equal(buildSnapshot({ ...input, connected: new Set() }).dailyTokens.used, null);
+});
+
+test("snapshot: local Agent report supplies daily headline and weekly token budget", () => {
+  const snap = buildSnapshot({
+    now,
+    results: new Map([["local", { provider: "local", label: "Local Agents",
+      ok: true, collectedAt: now.toISOString(), dailyTokens: 350,
+      quotas: { weeklyTokens: { used: 470, cap: null, unit: "tokens", resetAt: null } } }]]),
+    connected: new Set<ProviderId>(["local"]),
+    weather: null,
+    settings: { primaryAccount: "local", weeklyTokenBudget: 1000 },
+    assetBundleVersion: 1,
+  });
+  assert.equal(snap.dailyTokens.used, 350);
+  assert.equal(snap.accounts[0]?.provider, "local");
+  assert.equal(snap.accounts[0]?.quotas.weeklyTokens?.percent, 47);
+});
+
+
+test("snapshot: local coverage survives finance-only keys and avoids duplicate provider totals", () => {
+  const local: CollectorResult = { provider: "local", label: "Local", ok: true,
+    collectedAt: now.toISOString(), dailyTokens: 350 };
+  const ds: CollectorResult = { provider: "deepseek", label: "DS", ok: true,
+    collectedAt: now.toISOString(), dailyTokens: 350,
+    balance: { remaining: 5.5, currency: "USD", basis: "api:deepseek-balance" } };
+  const input = { now, results: new Map([["local", local], ["deepseek", ds]]),
+    connected: new Set<ProviderId>(["local", "deepseek", "glm"]), weather: null,
+    settings: { primaryAccount: "local", weeklyTokenBudget: null }, assetBundleVersion: 1 };
+  const snapshot = buildSnapshot(input);
+  assert.equal(snapshot.dailyTokens.used, 350);
+  assert.equal(snapshot.dailyTokens.coverage, "local-agent-logs");
+  assert.equal(snapshot.accounts.find(a => a.provider === "deepseek")?.balance?.currency, "USD");
+  assert.equal(snapshot.accounts.find(a => a.provider === "deepseek")?.quotas.weeklyTokens, null);
+  local.ok = false;
+  assert.equal(buildSnapshot(input).dailyTokens.used, null);
 });

@@ -211,6 +211,8 @@ provide reference material. Choose the entry that matches your task.
 | [Chinese fonts](development/engineering/lvgl-chinese-fonts.md) | Glyph coverage, widget font selection, and blank-text troubleshooting |
 | [Wi-Fi provisioning](development/engineering/wifi-provisioning.md) | Bluetooth provisioning reference and companion mini program |
 | [Badge app handoff](specs/2026-09-24-badge-onboarding.md) | Current badge/portal design, implemented behavior, pending NFC onboarding, and verified build status |
+| [Usage collection](development/engineering/usage-collection.md) | Token logs, subscription samples, monetary readings, and source coverage; [architecture decision](adr/0005-separate-usage-quota-and-billing.md) |
+| [Voice input feasibility](specs/2026-09-26-voice-input-feasibility.md) | Cross-platform microphone/input companion, open-source options, resource budget, and pending acceptance |
 | [Community projects and experience](reference/README.md) | Playbooks and reusable knowledge under `docs/reference/<username>/` |
 | [Contributing](contribution/README.md) | Documentation, commits, and pull-request conventions |
 | [Brand assets](brand/README.md) | Product visual references and [brand language](brand/brand-and-product.md) |

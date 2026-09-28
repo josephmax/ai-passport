@@ -26,18 +26,20 @@ export interface SnapshotQuota {
 export interface SnapshotAccount {
   provider: ProviderId;
   label: string;
+  collectedAt?: string;
   quotas: {
     weekly: SnapshotQuota | null;
     rolling5h: SnapshotQuota | null;
     weeklyTokens: SnapshotQuota | null;
   };
   error?: string;
+  balance?: CollectorResult["balance"];
 }
 
 export interface Snapshot {
   schema: 1;
   generatedAt: string;
-  dailyTokens: { used: number | null };
+  dailyTokens: { used: number | null; coverage?: "local-agent-logs"; collectedAt?: string };
   badgeName: string;
   badgeRole: string;
   accounts: SnapshotAccount[];
@@ -72,7 +74,7 @@ function toSnapshotQuota(
   };
 }
 
-const PROVIDER_ORDER: ProviderId[] = ["claude", "glm", "deepseek", "chatgpt"];
+const PROVIDER_ORDER: ProviderId[] = ["local", "claude", "glm", "deepseek", "chatgpt"];
 
 /**
  * Build a snapshot from collector results. Pure apart from `now`.
@@ -107,11 +109,15 @@ export function buildSnapshot(input: {
       weekly: toSnapshotQuota(r?.quotas?.weekly),
       rolling5h: toSnapshotQuota(r?.quotas?.rolling5h),
       weeklyTokens:
-        provider === "claude"
+        provider === "local" || provider === "claude"
           ? toSnapshotQuota(r?.quotas?.weeklyTokens, settings.weeklyTokenBudget)
           : toSnapshotQuota(r?.quotas?.weeklyTokens),
     };
+    // Legacy/experimental adapters must never pass money as weekly Tokens.
+    if (quotas.weeklyTokens?.unit !== "tokens") quotas.weeklyTokens = null;
     const account: SnapshotAccount = { provider, label, quotas };
+    if (r?.collectedAt) account.collectedAt = r.collectedAt;
+    if (r?.ok && r.balance) account.balance = r.balance;
     if (r && !r.ok && r.error) account.error = r.error;
     accounts.push(account);
   }
@@ -121,10 +127,20 @@ export function buildSnapshot(input: {
     const [primary] = accounts.splice(primaryIdx, 1);
     accounts.unshift(primary!);
   }
+  // The local report already covers multiple agents/providers. Adding provider
+  // counts could double-count the same calls; finance-only keys must not erase it.
+  const local = connected.has("local") ? results.get("local") : undefined;
+  if (connected.has("local")) {
+    const count = local?.dailyTokens;
+    dailyUsed = local?.ok && count != null && Number.isSafeInteger(count) && count >= 0 ? count : null;
+  }
   return {
     schema: 1,
     generatedAt: localIsoWithOffset(now),
-    dailyTokens: { used: dailyUsed },
+    dailyTokens: { used: dailyUsed, ...(connected.has("local") ? {
+      coverage: "local-agent-logs" as const,
+      ...(local?.collectedAt ? { collectedAt: local.collectedAt } : {}),
+    } : {}) },
     badgeName: settings.badgeName ?? "",
     badgeRole: settings.badgeRole ?? "",
     accounts,

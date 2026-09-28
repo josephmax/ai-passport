@@ -32,10 +32,10 @@ PORTAL_PASSWORD=smoketest SESSION_SECRET=smoke-secret \
 node dist/index.js >"$DATA_DIR/server.log" 2>&1 &
 SERVER_PID=$!
 
-for i in $(seq 1 50); do
+for i in $(seq 1 150); do
   if curl -sf "$BASE/api/health" >/dev/null 2>&1; then break; fi
   sleep 0.2
-  [ "$i" = 50 ] && { cat "$DATA_DIR/server.log" >&2; fail "server did not come up"; }
+  [ "$i" = 150 ] && { cat "$DATA_DIR/server.log" >&2; fail "server did not come up"; }
 done
 echo "[smoke] health OK"
 
@@ -50,7 +50,7 @@ echo "[smoke] portal login OK"
 curl -sf -b "$JAR" -o /dev/null -X POST "$BASE/portal/devices/pair-code" || fail "pair-code generation failed"
 CODE=$(curl -sf -b "$JAR" "$BASE/portal/devices" | sed -nE 's/.*class="pairecode">([0-9]{6})<.*/\1/p' | head -1)
 [ -n "$CODE" ] || fail "no pairing code found on devices page"
-echo "[smoke] pairing code: $CODE"
+echo "[smoke] pairing code generated"
 
 # --- device pairing -----------------------------------------------------------
 PAIR_RESP=$(curl -sf -X POST -H "content-type: application/json" \
@@ -58,7 +58,7 @@ PAIR_RESP=$(curl -sf -X POST -H "content-type: application/json" \
   || fail "pair request failed"
 TOKEN=$(printf '%s' "$PAIR_RESP" | sed -nE 's/.*"token":"([0-9a-f]{32})".*/\1/p')
 [ -n "$TOKEN" ] || fail "no token in pair response: $PAIR_RESP"
-echo "[smoke] paired, token: ${TOKEN:0:8}..."
+echo "[smoke] paired"
 
 # code is single-use
 HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "content-type: application/json" \
@@ -70,13 +70,24 @@ SNAPSHOT=$(curl -sf -H "X-Device-Token: $TOKEN" "$BASE/api/snapshot") || fail "s
 echo "$SNAPSHOT" | node -e '
   let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
     const j=JSON.parse(s);
+    if (Buffer.byteLength(s) > 4096) throw new Error("snapshot exceeds device buffer");
     if (j.schema !== 1) throw new Error("schema != 1");
     if (!Array.isArray(j.accounts) || j.accounts.length < 1) throw new Error("no accounts");
     if (!j.accounts[0].quotas) throw new Error("primary account has no quotas");
     if (!j.assetBundle || j.assetBundle.version < 1) throw new Error("no assetBundle.version");
     if (j.weather !== null && typeof j.weather.code !== "number") throw new Error("bad weather");
+    if (process.env.SMOKE_REQUIRE_LOCAL === "1" &&
+        (!Number.isSafeInteger(j.dailyTokens.used) || j.dailyTokens.used < 0 ||
+         j.dailyTokens.coverage !== "local-agent-logs")) throw new Error("no live local Token reading");
     console.log(`[smoke] snapshot OK: ${j.accounts.length} account(s), bundle v${j.assetBundle.version}, weather=${j.weather ? j.weather.city + "/" + j.weather.kind : "n/a"}`);
   });' || fail "snapshot validation failed"
+
+curl -sf -b "$JAR" -o /dev/null -X POST "$BASE/portal/accounts/refresh" || fail "manual refresh failed"
+curl -sf -b "$JAR" "$BASE/portal/accounts" | node -e '
+  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+    if (!s.includes("今日 Token：") || !s.includes("立即采集")) throw new Error("missing usage UI");
+  });' || fail "portal usage page failed"
+echo "[smoke] usage UI and manual refresh OK"
 
 HTTP=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Device-Token: deadbeef" "$BASE/api/snapshot")
 [ "$HTTP" = "401" ] || fail "bad token returned $HTTP, expected 401"

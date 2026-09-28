@@ -54,6 +54,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     draft: deps.draft,
     publisher: deps.publisher,
     refreshSnapshot: () => deps.snapshots.refresh(),
+    getSnapshot: () => deps.snapshots.get(),
   });
 
   return app;

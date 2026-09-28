@@ -11,7 +11,7 @@ import path from "node:path";
 import { readJson, writeJson } from "./jsonStore.js";
 import { CITY_TABLE } from "../cityTable.js";
 
-export type Provider = "claude" | "glm" | "deepseek";
+export type Provider = "local" | "claude" | "glm" | "deepseek" | "chatgpt";
 
 export interface ServiceSettings {
   primaryAccount: Provider;
@@ -34,7 +34,7 @@ export interface ServiceSettings {
 }
 
 export const DEFAULT_SETTINGS: ServiceSettings = {
-  primaryAccount: "claude",
+  primaryAccount: "local",
   city: CITY_TABLE[1]!.id, // shanghai
   customLat: null,
   customLon: null,
@@ -75,6 +75,9 @@ export class SettingsStore {
     this.configFile = path.join(dataDir, "config.json");
     this.keysFile = path.join(dataDir, "keys.json");
     this.settings = { ...DEFAULT_SETTINGS, ...readJson<ServiceSettings>(this.configFile, DEFAULT_SETTINGS) };
+    // Older installs selected the Claude-only collector. Local Agents now
+    // includes Claude alongside other detected CLI agents.
+    if (this.settings.primaryAccount === "claude") this.settings.primaryAccount = "local";
     this.keys = readJson<ServiceKeys>(this.keysFile, DEFAULT_KEYS);
   }
 

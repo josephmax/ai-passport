@@ -4,6 +4,9 @@
 
 # AI Passport 本地服务
 
+用量来源边界及下一步采集架构见[用量采集方案](../docs/development/engineering/usage-collection.zh_CN.md)
+和 [ADR 0005](../docs/adr/0005-separate-usage-quota-and-billing.zh_CN.md)。
+
 多合一挂坠的自托管后端（见
 [`docs/specs/2026-09-22-multi-pendant-app.md`](../docs/specs/2026-09-22-multi-pendant-app.md) 与
 [`docs/specs/2026-09-22-config-portal.md`](../docs/specs/2026-09-22-config-portal.md)）：
@@ -12,7 +15,7 @@
 服务端完成（ADR-0004）。
 
 - 运行环境：Node.js ≥ 22，TypeScript（strict），单进程 Fastify + sharp。
-- 范围：P1（Claude/GLM/DeepSeek 采集器；ChatGPT 为 P2 占位）。
+- 范围：P1（ccusage 本地 Agent 报告、GLM/DeepSeek API 采集器；订阅额度另行处理）。
 
 ## 安装
 
@@ -27,6 +30,7 @@ npm run build          # tsc -> dist/
 
 ```bash
 npm start              # node dist/index.js
+npm run start:local    # 构建并后台运行，仅在不存在时创建私有 .env
 npm run dev            # tsx watch src/index.ts（热重载）
 npm test               # node:test 单元测试（仅纯逻辑）
 npm run smoke          # 短启停冒烟：配对/快照/皮肤包全链路
@@ -47,32 +51,25 @@ npm run gen:placeholder # 生成并检查默认占位皮肤包 v1
 | `HOST` | `0.0.0.0` | 监听地址；需保证设备与手机可达 |
 | `PORTAL_PASSWORD` | — | 配置中心登录口令（必须设置；未设置时配置中心禁用，设备 API 不受影响） |
 | `SESSION_SECRET` | 临时随机 | Cookie 签名密钥（设置后重启不掉登录态） |
-| `CLAUDE_PROJECTS_PATH` | `~/.claude/projects` | Claude Code 会话日志目录 |
+| `CLAUDE_CONFIG_DIR`、`CODEX_HOME` 等 | Agent 默认路径 | 可选的 ccusage 数据目录，位于服务主机；见[支持来源](https://github.com/ccusage/ccusage#supported-sources) |
 | `SNAPSHOT_REFRESH_MINUTES` | `10` | 后台快照刷新间隔（分钟） |
 | `DATA_DIR` | `service/data` | 运行时数据目录 |
 
-运行时设置保存在 `data/config.json`（首次运行自动生成默认值）。
-**额度上限是默认值而非事实**，请按自己的套餐修改：
+运行时设置保存在 `data/config.json`（首次运行自动生成默认值）：
 
 ```jsonc
 {
-  "primaryAccount": "claude",        // 设备仪表盘第一位展示的账户
+  "primaryAccount": "local",         // 本地 Agent Token 报告排第一
   "city": "shanghai",                // 内置城市表（33 个中文城市）
   "customLat": null, "customLon": null, // 两者都填写时覆盖城市
   "weeklyTokenBudget": null,         // null = 设备显示纯数值
-  "claude": {
-    "label": "Claude",
-    "weeklyCapHours": 140,           // 周额度上限（规格示例默认值）
-    "rolling5hCapHours": 36,         // 5 小时窗口上限（规格示例默认值）
-    "projectsPath": null             // null = ~/.claude/projects（或 CLAUDE_PROJECTS_PATH）
-  },
   "glm":     { "label": "GLM",      "codingPlanUrl": "https://open.bigmodel.cn/api/paas/openapi/resource/coding-plan" },
   "deepseek":{ "label": "DeepSeek", "balanceUrl": "https://api.deepseek.com/user/balance" }
 }
 ```
 
-`data/config.json` 中的内容除上限与标签外，均可在配置中心（偏好/账户页）修改；
-上限与标签只能改文件。
+多数生效设置也可在配置中心修改。旧配置文件中的 `claude` 设置继续保留以兼容，
+但本地 Agent 采集器不再使用它们。
 
 ### API Key（P1 风险说明）
 
@@ -98,15 +95,15 @@ Key；配置中心回显仅显示尾 4 位。若要把主机暴露给不完全�
   "schema": 1,
   "generatedAt": "2026-09-22T06:00:00+08:00",
   "accounts": [{
-    "provider": "claude",            // claude | glm | deepseek（chatgpt：P2）
-    "label": "Claude",
+    "provider": "local",
+    "label": "Local Agents",
     "quotas": {
-      "weekly":      { "used": 62, "cap": 140, "unit": "h", "resetAt": "...", "percent": 44.3 },
-      "rolling5h":   { "used": 18, "cap": 36,  "unit": "h", "resetAt": "...", "percent": 50.0 },
-      "weeklyTokens":{ "used": 412000, "cap": null, "unit": "tokens", "resetAt": "...", "percent": null }
+      "weekly": null,
+      "rolling5h": null,
+      "weeklyTokens": { "used": 412000, "cap": null, "unit": "tokens", "resetAt": "...", "percent": null }
     }
   }],
-  "dailyTokens": { "used": 832000 },
+  "dailyTokens": { "used": 32000, "coverage": "local-agent-logs" },
   "badgeName": "Example",
   "badgeRole": "Role",
   "weather": { "code": 61, "kind": "rain", "sunrise": "06:12", "sunset": "18:05", "city": "上海" },
@@ -120,16 +117,15 @@ null——设备只渲染）、`kind`（归一化后的天气）、降级口径�
 
 - 只输出**已连接**的账户；主力账户固定排在 `accounts[0]`。
 - 拿不到的额度维度为 `null`，绝不编造：
-  - **DeepSeek** 无周额度口径；余额进入
-    `weeklyTokens`：`{ used: <剩余 CNY>, cap: null, unit: "CNY", basis: "balance-remaining" }`。
-  - **GLM** 若接口能识别出 used/total 小时数则映射到 `rolling5h`；否则
-    与 DeepSeek 一样降级为余额，或输出 `error` + 全 null 配额。
+  - **DeepSeek** 余额通过账户新增的 `balance` 读数 `{ remaining, currency, basis }` 返回；Token 额度保持 null。
+  - **GLM** 为实验性接口；仅明确的小时／请求次数且包含 300／10080 分钟窗口时映射额度，含糊读数保持 null。
+  - **Codex 额度** 读取近期本地 `rate_limits` 样本，按窗口时长而非主／次位置映射。采样超过一小时或额度重置后失效；单位 `%`，不读取厂商凭证。它只代表本机当前 Codex 配置，不是 ChatGPT 网页额度或账单。
 - 单个采集器失败不影响快照：账户仍在列表中，带 `error` 且配额为 null。
-- Claude 用量小时采用简化 ccusage 模型：按会话文件把消息时间戳聚成
-  活动块（间隔 > 5 分钟分块），块时长 = 末条−首条时间戳，再裁剪到窗口。
-  周窗口 = ISO 周（本地周一 00:00）。Token 统计 input+output（不含缓存）。
-- `dailyTokens.used` 是已连接账户本地今日的合计；只有所有纳入的服务商都能
-  提供可信今日读数时才给数值，否则为 null。名牌字段来自鉴权的名牌页。
+- 本地 Agent 采集器调用固定版本 ccusage 的离线 JSON 报告，从本地周一零点
+  到今天累加每日记录。它在**服务主机**检测 Claude Code、Codex、OpenCode、
+  Gemini CLI 等受支持来源；日志与 API Key 不上传。这些 Token 计数不代表
+  官方订阅额度或使用百分比。
+- 接入本地采集器时，`dailyTokens.used` 为观测到的本地 Agent 总量，`coverage` 为 `local-agent-logs`。仅提供余额的账户不使总量失效，也不重复叠加供应商计数；本地采集失败时保持 null。名牌字段来自鉴权的名牌页。
   设备离线时沿用上次快照。
 
 ## 皮肤包（APB1）
@@ -161,8 +157,8 @@ victory ≤4 帧）、地图 240×160、装扮 24×24（≤8 个）、帧率 1�
   `main/fonts/badge_name_glyphs.txt` 中的汉字，以及英文字母、数字、空格、
   句点、下划线和连字符；不支持的姓名在同步前拒绝。身份最多 10 个受支持的
   ASCII 字符；姓名留空显示设备占位文案。
-- **账户**：GLM/DeepSeek Key 表单（回显仅尾 4 位）、Claude 采集器状态与
-  最近采集时间、主力账户单选（默认 claude）、ChatGPT P2 占位卡。
+- **账户**：GLM/DeepSeek Key 表单（回显仅尾 4 位）、本地 Agent 采集器状态与
+  最近采集时间、主力账户单选（默认 local）、Codex 额度观测。
 - **偏好**：城市选择（内置城市表 + 自定义经纬度）、周 Token 预算
   （null = 设备显示纯数值）。
 - **设备**：设备列表（名称/令牌状态/最后同步）、生成一次性配对码、
@@ -188,7 +184,7 @@ service/
 │   ├── wmo.ts                 WMO 归一化（固件镜像）
 │   ├── xpTable.ts             经验分段表镜像（校验合计 3145）
 │   ├── cityTable.ts           33 城市表 + 定位解析
-│   ├── collectors/            claude.ts（jsonl 读取）、claudeUsage.ts（纯聚合）、
+│   ├── collectors/            localAgents.ts（ccusage）、
 │   │                          glm.ts / deepseek.ts（映射 + 客户端）、registry.ts
 │   ├── assets/                bundleFormat.ts、rgb565.ts、pipeline.ts（sharp）、
 │   │                          placeholder.ts、draftStore.ts、publisher.ts
@@ -206,7 +202,7 @@ service/
 
 `npm test` 运行纯逻辑测试：WMO 归一化全 0–99 范围（镜像
 `main/app/app_weather.c`）、经验分段表（满级合计 3145 番茄）、配对码生命
-周期、APB1 打包/解析（含 4 MB 上限）、RGB565 字节序、Claude 用量聚合
+周期、APB1 打包/解析（含 4 MB 上限）、RGB565 字节序、本地 Agent 报告解析
 （活动块/窗口/Token）、GLM/DeepSeek 响应映射、快照字段/排序/百分比规则、
 城市表、发布器草稿→发布→回滚、sharp PNG 转码管线。
 `npm run smoke` 额外把真实服务短启停做端到端验证。
@@ -215,7 +211,16 @@ service/
 
 - NFC 轻碰配网／打开入口及连贯的两阶段手机流程；目前需从设备设置手动进入
   SoftAP 表单。见[接入设计与交接](../docs/specs/2026-09-24-badge-onboarding.zh_CN.md)。
-- ChatGPT 采集器（无官方额度接口，P2 调研）。
+- Claude 订阅额度轮询、ChatGPT 网页额度及 API 实际账单未实现；已提供 Codex 本地额度观测。
 - 配置中心素材动画预览与快照预览渲染（P2）。
 - 天气精灵上传（仅内置）、按设备强制重下发皮肤包、多设备分组（P3+）、
   Key 加密存储、HTTPS（P1 设备在局域网内走明文 HTTP；需要 TLS 请加反向代理）。
+
+
+## 本地验收交接（2026-09-26）
+
+服务构建、77 项单元测试和真实日志冒烟验收通过，涵盖登录、手动刷新、一次性配对、鉴权快照、拒绝未授权访问、素材下载及设备快照 4096 字节限制。账户页显示观测到的今日／本周 Token 和有效的 Codex 额度。运行中的本地实例也与独立执行的 ccusage 当日报告核对一致。没有真实 Key 的 GLM／DeepSeek 账户查询尚未验证，不声称账户全量或实际账单完整。
+
+打开 `http://localhost:3000/portal/accounts`。后台进程使用忽略的 `service/.env` 和 `service/data/`；登录密码查看 `.env` 的 `PORTAL_PASSWORD`。`npm run start:local` 会复用可访问的实例，不会在修改源码后自动重启。重启时先确认配置端口上的服务进程并停止它，再运行此命令。电脑休眠／重启会中断服务；该辅助命令不安装系统自启动项。局域网设备使用电脑的局域网地址，不能用 localhost，并通过配置中心配对。
+
+语音输入调研见[可行性报告](../docs/specs/2026-09-26-voice-input-feasibility.zh_CN.md)。

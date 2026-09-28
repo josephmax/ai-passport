@@ -16,11 +16,12 @@ export async function runCollectors(
   await Promise.all(
     collectors.map(async (c) => {
       let result: CollectorResult;
+      let timer: NodeJS.Timeout | undefined;
       try {
         result = await Promise.race([
           c.collect(now),
           new Promise<CollectorResult>((_, reject) =>
-            setTimeout(() => reject(new Error(`collector ${c.provider} timed out`)), timeoutMs),
+            { timer = setTimeout(() => reject(new Error(`collector ${c.provider} timed out`)), timeoutMs); },
           ),
         ]);
       } catch (err) {
@@ -32,6 +33,7 @@ export async function runCollectors(
           error: err instanceof Error ? err.message : String(err),
         };
       }
+      finally { if (timer) clearTimeout(timer); }
       results.set(c.provider, result);
     }),
   );

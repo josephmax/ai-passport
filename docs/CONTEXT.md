@@ -46,10 +46,24 @@ by the local service and pulled by the device for display.
 _Avoid_: usage data, report
 
 **Today Spend**:
-The sum of token consumption across all connected Coding accounts since
-local midnight, aggregated by the local service and delivered with the
-snapshot; shown as the Home headline.
-_Avoid_: daily burn, today's usage
+The legacy Home label for observed Token consumption since local midnight.
+Despite its name, this is not a currency charge or a complete provider bill.
+_Avoid_: actual spend, invoice total
+
+**Usage Reading**:
+A sourced measurement for one Coding Account and one metric over a stated
+interval; its unit, observation time, and coverage travel with the value.
+_Avoid_: interchangeable quota, generic usage number
+
+**Subscription Quota**:
+A provider-defined allowance or remaining capacity within a reset window,
+which may be measured in requests or a percentage rather than Tokens.
+_Avoid_: token consumption, API balance
+
+**API Charge**:
+An actual monetary charge reported by a provider for metered API use, separate
+from estimated cost and prepaid balance.
+_Avoid_: token usage, balance, estimated cost
 
 ### Pet domain
 

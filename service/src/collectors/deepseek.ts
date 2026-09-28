@@ -2,9 +2,7 @@
  * DeepSeek collector: official balance endpoint
  * `GET https://api.deepseek.com/user/balance` (Bearer key).
  *
- * DeepSeek exposes a money balance, not a weekly-hour quota — we degrade
- * honestly: the remaining balance flows into `weeklyTokens` with unit CNY and
- * `basis: "balance-remaining"`; no fabricated hours, no invented caps.
+ * Monetary balance is retained separately from token quotas.
  */
 
 import type { Collector, CollectorResult, CollectorStatus } from "./types.js";
@@ -40,14 +38,14 @@ export function mapDeepSeekBalance(json: unknown): DeepSeekBalance | null {
   }
   if (!pick) return null;
   const toNum = (v: unknown): number | null => {
-    const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
+    const n = typeof v === "string" && v.trim() !== "" ? Number(v) : typeof v === "number" ? v : NaN;
     return Number.isFinite(n) ? n : null;
   };
   const remaining = toNum(pick.total_balance);
-  if (remaining === null) return null;
+  if (remaining === null || remaining < 0 || typeof pick.currency !== "string" || !/^[A-Z]{3}$/.test(pick.currency)) return null;
   return {
     available: root.is_available === true,
-    currency: typeof pick.currency === "string" ? pick.currency : "CNY",
+    currency: pick.currency,
     remaining,
     granted: toNum(pick.granted_balance) ?? 0,
     toppedUp: toNum(pick.topped_up_balance) ?? 0,
@@ -109,15 +107,8 @@ export class DeepSeekCollector implements Collector {
       return {
         ...base,
         ok: true,
-        quotas: {
-          weeklyTokens: {
-            used: balance.remaining,
-            cap: null,
-            unit: "CNY",
-            resetAt: null,
-            basis: "balance-remaining",
-          },
-        },
+        balance: { remaining: balance.remaining, currency: balance.currency,
+          basis: "api:deepseek-balance" },
       };
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err);

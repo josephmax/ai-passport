@@ -11,6 +11,7 @@ import type { DeviceRegistry } from "../store/devices.js";
 import type { DraftStore } from "../assets/draftStore.js";
 import type { AssetPublisher } from "../assets/publisher.js";
 import type { Collector } from "../collectors/types.js";
+import type { Snapshot } from "../snapshot.js";
 import { CITY_TABLE, findCity } from "../cityTable.js";
 import { ACTION_SPECS, type ActionSlot } from "../assets/placeholder.js";
 import {
@@ -44,6 +45,7 @@ export interface PortalDeps {
   draft: DraftStore;
   publisher: AssetPublisher;
   refreshSnapshot: () => Promise<unknown>;
+  getSnapshot?: () => Promise<Snapshot>;
 }
 
 const ACTION_LABELS: Record<ActionSlot, string> = {
@@ -148,9 +150,14 @@ export function registerPortal(app: FastifyInstance, deps: PortalDeps): void {
     const settings = deps.settings.get();
     const keys = deps.settings.getKeys();
     const status = (p: string) => deps.collectors.find((c) => c.provider === p)?.status();
-    const claude = status("claude");
+    const local = status("local");
     const glm = status("glm");
     const deepseek = status("deepseek");
+    const codex = status("chatgpt");
+    const snapshot = await deps.getSnapshot?.();
+    const count = snapshot?.dailyTokens.used;
+    const week = snapshot?.accounts.find(a => a.provider === "local")?.quotas.weeklyTokens?.used;
+    const number = (n: number | null | undefined) => n == null ? "暂无数据" : n.toLocaleString("zh-CN");
 
     const keyCard = (
       id: "glm" | "deepseek",
@@ -160,7 +167,7 @@ export function registerPortal(app: FastifyInstance, deps: PortalDeps): void {
     ) => `<div class="card">
 <h2>${title} <span class="badge ${st?.connected ? "ok" : "off"}">${st?.connected ? "已连接" : "未连接"}</span></h2>
 <div class="hint">${hint}</div>
-<div class="hint">当前 Key：<span class="mono">${esc(keys[id] ? maskKey(keys[id]) : "未设置")}</span>${st?.lastOkAt ? ` · 最近采集 ${esc(fmtTime(st.lastOkAt))}` : ""}${st?.connected && st?.detail && !st.lastOkAt ? ` · ${esc(st.detail)}` : ""}</div>
+<div class="hint">当前 Key：<span class="mono">${esc(keys[id] ? maskKey(keys[id]) : "未设置")}</span>${st?.lastOkAt ? ` · 最近采集 ${esc(fmtTime(st.lastOkAt))}` : ""}${st?.connected && st?.detail ? ` · ${esc(st.detail)}` : ""}</div>
 <form method="post" action="/portal/accounts/keys" style="margin-top:8px">
   <input type="hidden" name="provider" value="${id}">
   <label>API Key（留空保持不变，仅回显尾 4 位）</label>
@@ -172,25 +179,31 @@ export function registerPortal(app: FastifyInstance, deps: PortalDeps): void {
 </form>
 </div>`;
 
-    const primaryOptions = (["claude", "glm", "deepseek"] as Provider[])
+    const primaryOptions = (["local", "chatgpt", "glm", "deepseek"] as Provider[])
       .map(
         (p) =>
-          `<label style="margin:8px 0"><input type="radio" name="primary" value="${p}" ${settings.primaryAccount === p ? "checked" : ""}> ${p === "claude" ? "Claude" : p === "glm" ? "GLM" : "DeepSeek"}</label>`,
+          `<label style="margin:8px 0"><input type="radio" name="primary" value="${p}" ${settings.primaryAccount === p ? "checked" : ""}> ${p === "local" ? "本地 Agent" : p === "chatgpt" ? "Codex 额度" : p === "glm" ? "GLM" : "DeepSeek"}</label>`,
       )
       .join("");
 
     const body = `
 <div class="card">
-  <h2>Claude <span class="badge ${claude?.connected ? "ok" : "off"}">${claude?.connected ? "已连接" : "未连接"}</span></h2>
-  <div class="hint">采集本地 Claude Code 会话日志（ccusage 模式）：${esc(claude?.detail ?? "")}</div>
-  <div class="hint">最近采集：${esc(fmtTime(claude?.lastRunAt ?? null))}${claude?.lastOkAt ? "（成功）" : ""}</div>
-  <div class="hint">额度上限（周 ${settings.claude.weeklyCapHours}h / 5h 窗口 ${settings.claude.rolling5hCapHours}h）可在 <code>data/config.json</code> 中修改。</div>
+  <h2>本地 Agent <span class="badge ${local?.connected ? "ok" : "off"}">${local?.connected ? "已安装" : "未安装"}</span></h2>
+  <div class="hint">ccusage 汇总本机 Claude Code、Codex、OpenCode、Gemini CLI 等已检测到的 Agent；读取本地日志，不需要厂商 API Key。${esc(local?.detail ?? "")}</div>
+  <div class="hint">最近采集：${esc(fmtTime(local?.lastRunAt ?? null))}${local?.lastOkAt && local.lastOkAt === local.lastRunAt ? "（成功）" : ""}</div>
+  <p>今日 Token：<strong>${number(count)}</strong> · 本周 Token：<strong>${number(week)}</strong></p>
+  <div class="hint">覆盖本机已检测日志，不代表供应商账户全量或订阅额度。设备缓存最多约 10 分钟后更新。</div>
+  <form method="post" action="/portal/accounts/refresh"><button type="submit">立即采集</button></form>
 </div>
-${keyCard("glm", "GLM", "官方 API + 用户 Key（bigmodel.cn）。P1 尽力查询 Coding Plan 额度，失败时降级为余额/无数据，不会编造数值。", glm)}
+${keyCard("glm", "GLM", "实验性 Coding Plan 接口，尚待真实账户验证；未知单位不展示。", glm)}
 ${keyCard("deepseek", "DeepSeek", "官方余额接口 api.deepseek.com/user/balance。DeepSeek 无周额度口径，快照中显示为余额（CNY，无 cap）。", deepseek)}
+${snapshot?.accounts.filter(a => a.balance).map(a => `<div class="card"><h2>${esc(a.label)} 余额</h2><p>${number(a.balance!.remaining)} ${esc(a.balance!.currency)}</p><div class="hint">预付余额，不是今日费用或 Token 数。</div></div>`).join("") ?? ""}
 <div class="card">
-  <h2>ChatGPT <span class="badge p2">P2 占位</span></h2>
-  <div class="hint">订阅额度暂无官方查询接口，P2 调研后再开放。</div>
+  <h2>Codex 额度</h2>
+  <div class="hint">${esc(codex?.detail ?? "未检测到 Codex")}</div>
+  <div class="hint">客户端样本：${esc(fmtTime(codex?.lastOkAt ?? null))}。不是 ChatGPT 网页额度；只代表本机 Codex 配置。</div>
+  <p>${snapshot?.accounts.find(a => a.provider === "chatgpt")?.quotas.weekly ? `周额度已用：${number(snapshot.accounts.find(a => a.provider === "chatgpt")!.quotas.weekly!.used)}%` : "周额度：暂无数据"}</p>
+  <p>${snapshot?.accounts.find(a => a.provider === "chatgpt")?.quotas.rolling5h ? `5 小时额度已用：${number(snapshot.accounts.find(a => a.provider === "chatgpt")!.quotas.rolling5h!.used)}%` : "5 小时额度：暂无数据"}</p>
 </div>
 <div class="card">
   <h2>主力账户</h2>
@@ -207,6 +220,10 @@ ${keyCard("deepseek", "DeepSeek", "官方余额接口 api.deepseek.com/user/bala
 
   app.get("/portal", renderAccounts);
   app.get("/portal/accounts", renderAccounts);
+  app.post("/portal/accounts/refresh", async (_request, reply) => {
+    await deps.refreshSnapshot();
+    return redirect(reply, "/portal/accounts", "采集已刷新，请查看读数与各来源状态");
+  });
 
   app.post("/portal/accounts/keys", async (request, reply) => {
     const body = (request.body ?? {}) as { provider?: string; key?: string; op?: string };
@@ -215,17 +232,19 @@ ${keyCard("deepseek", "DeepSeek", "官方余额接口 api.deepseek.com/user/bala
     }
     if (body.op === "clear") {
       await deps.settings.setKey(body.provider, null);
+      await deps.refreshSnapshot();
       return redirect(reply, "/portal", `${body.provider.toUpperCase()} Key 已清除`);
     }
     const key = (body.key ?? "").trim();
     if (key === "") return redirect(reply, "/portal", undefined, "Key 不能为空（留空提交请用清除）");
     await deps.settings.setKey(body.provider, key);
+    await deps.refreshSnapshot();
     return redirect(reply, "/portal", `${body.provider.toUpperCase()} Key 已保存（明文存储于 data/keys.json，注意风险）`);
   });
 
   app.post("/portal/accounts/primary", async (request, reply) => {
     const body = (request.body ?? {}) as { primary?: string };
-    if (body.primary !== "claude" && body.primary !== "glm" && body.primary !== "deepseek") {
+    if (body.primary !== "local" && body.primary !== "chatgpt" && body.primary !== "glm" && body.primary !== "deepseek") {
       return redirect(reply, "/portal", undefined, "无效的主力账户");
     }
     await deps.settings.update({ primaryAccount: body.primary });

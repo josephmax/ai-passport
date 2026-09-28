@@ -5,7 +5,7 @@
  *   npm run dev                    (tsx watch)
  *
  * Environment (.env, see .env.example): PORT, HOST, PORTAL_PASSWORD,
- * SESSION_SECRET, CLAUDE_PROJECTS_PATH, SNAPSHOT_REFRESH_MINUTES, DATA_DIR.
+ * SESSION_SECRET, SNAPSHOT_REFRESH_MINUTES, DATA_DIR, optional ccusage data roots.
  */
 
 import path from "node:path";
@@ -23,7 +23,8 @@ import { SettingsStore } from "./store/settings.js";
 import { DeviceRegistry } from "./store/devices.js";
 import { WeatherService } from "./weather.js";
 import { SnapshotService } from "./snapshotService.js";
-import { ClaudeCollector } from "./collectors/claude.js";
+import { LocalAgentsCollector } from "./collectors/localAgents.js";
+import { CodexQuotaCollector } from "./collectors/codexQuota.js";
 import { GlmCollector } from "./collectors/glm.js";
 import { DeepSeekCollector } from "./collectors/deepseek.js";
 import { AssetPublisher } from "./assets/publisher.js";
@@ -60,14 +61,7 @@ async function main(): Promise<void> {
   }
 
   const s = settings.get();
-  const claudeCollector = new ClaudeCollector({
-    label: s.claude.label,
-    projectsPath: process.env.CLAUDE_PROJECTS_PATH ?? s.claude.projectsPath,
-    caps: {
-      weeklyCapHours: s.claude.weeklyCapHours,
-      rolling5hCapHours: s.claude.rolling5hCapHours,
-    },
-  });
+  const localCollector = new LocalAgentsCollector();
   const glmCollector = new GlmCollector({
     label: s.glm.label,
     url: s.glm.codingPlanUrl,
@@ -78,7 +72,7 @@ async function main(): Promise<void> {
     url: s.deepseek.balanceUrl,
     getKey: () => settings.getKey("deepseek"),
   });
-  const collectors = [claudeCollector, glmCollector, deepseekCollector];
+  const collectors = [localCollector, new CodexQuotaCollector(), glmCollector, deepseekCollector];
 
   const weather = new WeatherService();
   const snapshots = new SnapshotService({
@@ -100,6 +94,9 @@ async function main(): Promise<void> {
     collectors,
   });
 
+  // Warm the cache before accepting device requests. Vendor I/O subsequently
+  // stays in the background so the device's 12-second timeout is respected.
+  await snapshots.refresh();
   snapshots.start();
 
   await app.listen({ port, host });

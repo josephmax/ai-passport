@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapGlmResponse } from "../src/collectors/glm.js";
-import { mapDeepSeekBalance } from "../src/collectors/deepseek.js";
+import { GlmCollector, mapGlmResponse } from "../src/collectors/glm.js";
+import { DeepSeekCollector, mapDeepSeekBalance } from "../src/collectors/deepseek.js";
 
 test("glm mapper: hours pair from coding-plan style responses", () => {
   assert.deepEqual(mapGlmResponse({ data: { usageHours: 5.5, totalHours: 120 } }), {
@@ -11,7 +11,7 @@ test("glm mapper: hours pair from coding-plan style responses", () => {
     remaining: null,
   });
   assert.deepEqual(mapGlmResponse({ data: { used: 3, total: 100, extra: "x" } }), {
-    kind: "hours",
+    kind: "unknown",
     used: 3,
     total: 100,
     remaining: null,
@@ -86,4 +86,28 @@ test("deepseek mapper: rejects malformed payloads", () => {
     null,
   );
   assert.equal(mapDeepSeekBalance(null), null);
+  assert.equal(mapDeepSeekBalance({ balance_infos: [{ total_balance: "5" }] }), null);
+  assert.equal(mapDeepSeekBalance({ balance_infos: [{ currency: "CNY", total_balance: "" }] }), null);
+});
+
+test("DeepSeek collector retains actual currency and never emits a Token quota", async t => {
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ is_available: true,
+    balance_infos: [{ currency: "USD", total_balance: "5.25" }] })));
+  const result = await new DeepSeekCollector({ getKey: () => "fixture" }).collect(new Date());
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.balance, { remaining: 5.25, currency: "USD", basis: "api:deepseek-balance" });
+  assert.equal(result.quotas, undefined);
+});
+
+test("GLM collector requires explicit unit/window and keeps request counts as requests", async t => {
+  let payload: unknown = { data: { usedPrompts: 10, totalPrompts: 100 } };
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(payload)));
+  const collector = new GlmCollector({ getKey: () => "fixture" });
+  assert.equal((await collector.collect(new Date())).ok, false);
+  assert.equal(collector.status().lastOkAt, null);
+  payload = { data: { usedPrompts: 10, totalPrompts: 100, window_minutes: 10080 } };
+  const result = await collector.collect(new Date());
+  assert.equal(result.ok, true);
+  assert.equal(result.quotas?.weekly?.unit, "requests");
+  assert.equal(result.quotas?.rolling5h, undefined);
 });
