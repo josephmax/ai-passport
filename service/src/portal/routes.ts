@@ -153,7 +153,7 @@ export function registerPortal(app: FastifyInstance, deps: PortalDeps): void {
     const local = status("local");
     const glm = status("glm");
     const deepseek = status("deepseek");
-    const codex = status("chatgpt");
+    const codex = status("codex");
     const snapshot = await deps.getSnapshot?.();
     const count = snapshot?.dailyTokens.used;
     const week = snapshot?.accounts.find(a => a.provider === "local")?.quotas.weeklyTokens?.used;
@@ -179,10 +179,10 @@ export function registerPortal(app: FastifyInstance, deps: PortalDeps): void {
 </form>
 </div>`;
 
-    const primaryOptions = (["local", "chatgpt", "glm", "deepseek"] as Provider[])
+    const primaryOptions = (["local", "codex", "glm", "deepseek"] as Provider[])
       .map(
         (p) =>
-          `<label style="margin:8px 0"><input type="radio" name="primary" value="${p}" ${settings.primaryAccount === p ? "checked" : ""}> ${p === "local" ? "本地 Agent" : p === "chatgpt" ? "Codex 额度" : p === "glm" ? "GLM" : "DeepSeek"}</label>`,
+          `<label style="margin:8px 0"><input type="radio" name="primary" value="${p}" ${settings.primaryAccount === p ? "checked" : ""}> ${p === "local" ? "本地 Agent" : p === "codex" ? "Codex 额度" : p === "glm" ? "GLM" : "DeepSeek"}</label>`,
       )
       .join("");
 
@@ -192,6 +192,10 @@ export function registerPortal(app: FastifyInstance, deps: PortalDeps): void {
   <div class="hint">ccusage 汇总本机 Claude Code、Codex、OpenCode、Gemini CLI 等已检测到的 Agent；读取本地日志，不需要厂商 API Key。${esc(local?.detail ?? "")}</div>
   <div class="hint">最近采集：${esc(fmtTime(local?.lastRunAt ?? null))}${local?.lastOkAt && local.lastOkAt === local.lastRunAt ? "（成功）" : ""}</div>
   <p>今日 Token：<strong>${number(count)}</strong> · 本周 Token：<strong>${number(week)}</strong></p>
+  <div class="hint">本机所有会话，包含缓存读取。分项仅来自已检测到的本地 Agent 日志；额度与 Token 数是不同指标。</div>
+  <table><thead><tr><th>Agent</th><th>今日 Token</th><th>本周 Token</th><th>5 小时额度</th><th>周额度</th></tr></thead><tbody>
+  ${(snapshot?.agents ?? []).map(a => `<tr><td>${esc(a.agent)}</td><td>${number(a.dailyTokens)}</td><td>${number(a.weeklyTokens)}</td><td>${a.rolling5h ? `${number(a.rolling5h.used)}%` : "暂无数据"}</td><td>${a.weekly ? `${number(a.weekly.used)}%` : "暂无数据"}</td></tr>`).join("") || `<tr><td colspan="5">暂无 Agent 分项</td></tr>`}
+  </tbody></table>
   <div class="hint">覆盖本机已检测日志，不代表供应商账户全量或订阅额度。设备缓存最多约 10 分钟后更新。</div>
   <form method="post" action="/portal/accounts/refresh"><button type="submit">立即采集</button></form>
 </div>
@@ -201,9 +205,9 @@ ${snapshot?.accounts.filter(a => a.balance).map(a => `<div class="card"><h2>${es
 <div class="card">
   <h2>Codex 额度</h2>
   <div class="hint">${esc(codex?.detail ?? "未检测到 Codex")}</div>
-  <div class="hint">客户端样本：${esc(fmtTime(codex?.lastOkAt ?? null))}。不是 ChatGPT 网页额度；只代表本机 Codex 配置。</div>
-  <p>${snapshot?.accounts.find(a => a.provider === "chatgpt")?.quotas.weekly ? `周额度已用：${number(snapshot.accounts.find(a => a.provider === "chatgpt")!.quotas.weekly!.used)}%` : "周额度：暂无数据"}</p>
-  <p>${snapshot?.accounts.find(a => a.provider === "chatgpt")?.quotas.rolling5h ? `5 小时额度已用：${number(snapshot.accounts.find(a => a.provider === "chatgpt")!.quotas.rolling5h!.used)}%` : "5 小时额度：暂无数据"}</p>
+  <div class="hint">客户端样本：${esc(fmtTime(codex?.lastOkAt ?? null))}。来自本机 Codex 会话，未绑定当前登录身份；不是 ChatGPT 网页额度。</div>
+  <p>${snapshot?.accounts.find(a => a.provider === "codex")?.quotas.weekly ? `周额度已用：${number(snapshot.accounts.find(a => a.provider === "codex")!.quotas.weekly!.used)}%` : "周额度：暂无数据"}</p>
+  <p>${snapshot?.accounts.find(a => a.provider === "codex")?.quotas.rolling5h ? `5 小时额度已用：${number(snapshot.accounts.find(a => a.provider === "codex")!.quotas.rolling5h!.used)}%` : "5 小时额度：暂无数据"}</p>
 </div>
 <div class="card">
   <h2>主力账户</h2>
@@ -244,7 +248,7 @@ ${snapshot?.accounts.filter(a => a.balance).map(a => `<div class="card"><h2>${es
 
   app.post("/portal/accounts/primary", async (request, reply) => {
     const body = (request.body ?? {}) as { primary?: string };
-    if (body.primary !== "local" && body.primary !== "chatgpt" && body.primary !== "glm" && body.primary !== "deepseek") {
+    if (body.primary !== "local" && body.primary !== "codex" && body.primary !== "glm" && body.primary !== "deepseek") {
       return redirect(reply, "/portal", undefined, "无效的主力账户");
     }
     await deps.settings.update({ primaryAccount: body.primary });

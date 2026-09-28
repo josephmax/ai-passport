@@ -8,22 +8,24 @@
 #include <string.h>
 #include <sys/time.h>
 
-enum { WEEKLY, ROLLING, TOKENS, DIM_COUNT };
-static const char *TITLES[] = {"周额度", "5 小时额度", "本周 Token"};
+enum { WEEKLY, ROLLING, TOKENS, AGENTS, DIM_COUNT };
+static const char *TITLES[] = {"周额度", "5 小时额度", "本周 Token", "Agents"};
 static ui_dash_t *s_dash;
 static ui_status_bar_t s_status;
 static lv_obj_t *s_content, *s_hint, *s_title, *s_account;
-static lv_obj_t *s_cards[3], *s_big[3], *s_sub[3], *s_bars[3];
+static lv_obj_t *s_cards[DIM_COUNT], *s_big[DIM_COUNT], *s_sub[DIM_COUNT], *s_bars[DIM_COUNT];
 static lv_obj_t *s_detail_big, *s_detail_sub, *s_detail_reset, *s_detail_bar;
 static lv_obj_t *s_detail_rows[APP_SNAPSHOT_MAX_ACCOUNTS - 1];
 static int s_selected;
+static int s_agent_selected;
 static bool s_drill;
 
 static const char *provider_label(const char *provider) {
+    if (!strcmp(provider, "local")) return "Agents";
+    if (!strcmp(provider, "codex") || !strcmp(provider, "chatgpt")) return "Codex";
     if (!strcmp(provider, "claude")) return "Claude";
     if (!strcmp(provider, "glm")) return "GLM";
     if (!strcmp(provider, "deepseek")) return "DeepSeek";
-    if (!strcmp(provider, "chatgpt")) return "ChatGPT";
     return "Coding"; // Remote names are not guaranteed to be in the font subset.
 }
 
@@ -31,7 +33,7 @@ static const app_quota_t *quota(const app_account_t *account, int dim) {
     if (!account) return NULL;
     if (dim == WEEKLY) return account->has_weekly ? &account->weekly : NULL;
     if (dim == ROLLING) return account->has_rolling5h ? &account->rolling5h : NULL;
-    return account->has_weekly_tokens ? &account->weekly_tokens : NULL;
+    return dim == TOKENS && account->has_weekly_tokens ? &account->weekly_tokens : NULL;
 }
 
 static void number(const app_quota_t *q, char *buf, size_t cap) {
@@ -39,6 +41,11 @@ static void number(const app_quota_t *q, char *buf, size_t cap) {
     if (!q) snprintf(buf, cap, "--");
     else if (app_snapshot_permille(q, &pm)) snprintf(buf, cap, "%d%%", pm / 10);
     else if (!strcmp(q->unit, "CNY")) snprintf(buf, cap, "%.2f", q->used);
+    else if (!strcmp(q->unit, "requests")) {
+        char count[24];
+        app_fmt_daily_tokens(q->used, count, sizeof(count));
+        snprintf(buf, cap, "%s req", count);
+    }
     else app_fmt_daily_tokens(q->used, buf, cap);
 }
 
@@ -86,6 +93,14 @@ void ui_dash_refresh(void) {
     lv_label_set_text(s_account, buf);
     if (!s_drill) {
         for (int i = 0; i < DIM_COUNT; i++) {
+            if (i == AGENTS) {
+                ui_theme_select(s_cards[i], i == s_selected);
+                snprintf(buf, sizeof(buf), "%d", rt->snap_valid ? rt->snap.agent_count : 0);
+                lv_label_set_text(s_big[i], buf);
+                lv_label_set_text(s_sub[i], "local logs");
+                lv_obj_add_flag(s_bars[i], LV_OBJ_FLAG_HIDDEN);
+                continue;
+            }
             const app_quota_t *q = quota(primary, i);
             ui_theme_select(s_cards[i], i == s_selected);
             number(q, buf, sizeof(buf)); lv_label_set_text(s_big[i], buf);
@@ -94,6 +109,30 @@ void ui_dash_refresh(void) {
         }
     } else {
         lv_label_set_text(s_title, TITLES[s_selected]);
+        if (s_selected == AGENTS) {
+            const app_agent_t *a = rt->snap_valid && s_agent_selected < rt->snap.agent_count
+                ? &rt->snap.agents[s_agent_selected] : NULL;
+            lv_label_set_text(s_account, a ? a->agent : "--");
+            if (a && a->has_daily_tokens) app_fmt_daily_tokens(a->daily_tokens, buf, sizeof(buf));
+            else snprintf(buf, sizeof(buf), "--");
+            lv_label_set_text(s_detail_big, buf);
+            lv_obj_add_flag(s_detail_bar, LV_OBJ_FLAG_HIDDEN);
+            if (a && a->has_weekly_tokens) {
+                char weekly[24]; app_fmt_daily_tokens(a->weekly_tokens, weekly, sizeof(weekly));
+                snprintf(buf, sizeof(buf), "Today Token / Week %s", weekly);
+            } else snprintf(buf, sizeof(buf), "Today Token / Week --");
+            lv_label_set_text(s_detail_sub, buf);
+            number(a && a->has_rolling5h ? &a->rolling5h : NULL, buf, sizeof(buf));
+            char line[96]; snprintf(line, sizeof(line), "5h quota  %s", buf);
+            lv_label_set_text(s_detail_reset, line);
+            number(a && a->has_weekly ? &a->weekly : NULL, buf, sizeof(buf));
+            snprintf(line, sizeof(line), "Week quota  %s", buf);
+            lv_label_set_text(s_detail_rows[0], line);
+            lv_obj_clear_flag(s_detail_rows[0], LV_OBJ_FLAG_HIDDEN);
+            for (int i = 1; i < APP_SNAPSHOT_MAX_ACCOUNTS - 1; i++)
+                lv_obj_add_flag(s_detail_rows[i], LV_OBJ_FLAG_HIDDEN);
+            return;
+        }
         const app_quota_t *q = quota(primary, s_selected);
         number(q, buf, sizeof(buf)); lv_label_set_text(s_detail_big, buf);
         refresh_bar(s_detail_bar, q);
@@ -130,13 +169,13 @@ static void show(bool drill) {
         s_account = ui_theme_label(s_content, 115, 16, 113, &app_font_12, UI_INK_DIM, "");
         lv_obj_set_style_text_align(s_account, LV_TEXT_ALIGN_RIGHT, 0);
         for (int i = 0; i < DIM_COUNT; i++) {
-            s_cards[i] = ui_theme_card(s_content, 8, 37 + i * 78, 224, 72, false);
+            s_cards[i] = ui_theme_card(s_content, 8, 37 + i * 60, 224, 56, false);
             ui_theme_label(s_cards[i], 10, 8, 204, &app_font_12, UI_INK_DIM, TITLES[i]);
-            s_big[i] = ui_theme_label(s_cards[i], 10, 24, 204, &lv_font_montserrat_28, UI_INK, "--");
+            s_big[i] = ui_theme_label(s_cards[i], 10, 21, 204, &lv_font_montserrat_24, UI_INK, "--");
             // Context below the number avoids overlap with long four-digit values.
-            s_sub[i] = ui_theme_label(s_cards[i], 116, 37, 98, &app_font_12, UI_INK_DIM, "");
+            s_sub[i] = ui_theme_label(s_cards[i], 116, 31, 98, &app_font_12, UI_INK_DIM, "");
             lv_obj_set_style_text_align(s_sub[i], LV_TEXT_ALIGN_RIGHT, 0);
-            s_bars[i] = meter(s_cards[i], 10, 59, 204);
+            s_bars[i] = meter(s_cards[i], 10, 48, 204);
         }
         ui_theme_hint_set(s_hint, "选择", "详情", "返回");
     } else {
@@ -145,7 +184,8 @@ static void show(bool drill) {
         s_detail_bar = meter(s_content, 14, 107, 212);
         s_detail_sub = ui_theme_label(s_content, 14, 121, 212, &app_font_12, UI_INK_DIM, "");
         s_detail_reset = ui_theme_label(s_content, 14, 142, 212, &app_font_12, UI_ACCENT, "");
-        ui_theme_label(s_content, 14, 164, 212, &app_font_12, UI_INK_DIM, "其他账户 · 同维度");
+        ui_theme_label(s_content, 14, 164, 212, &app_font_12, UI_INK_DIM,
+                       s_selected == AGENTS ? "UP / DOWN: Agent" : "其他账户 · 同维度");
         for (int i = 0; i < APP_SNAPSHOT_MAX_ACCOUNTS - 1; i++)
             s_detail_rows[i] = ui_theme_label(s_content, 14, 184 + i * 17, 212, &app_font_12, UI_INK, "");
         ui_theme_hint_set(s_hint, "切换", NULL, "返回");
@@ -156,9 +196,12 @@ static void show(bool drill) {
 bool ui_dash_key(bool ok_short, bool ok_long, bool up, bool down) {
     if (ok_long) { if (!s_drill) return false; show(false); }
     else if (up || down) {
-        s_selected = (s_selected + (up ? DIM_COUNT - 1 : 1)) % DIM_COUNT;
+        if (s_drill && s_selected == AGENTS) {
+            int count = app_runtime()->snap_valid ? app_runtime()->snap.agent_count : 0;
+            if (count > 0) s_agent_selected = (s_agent_selected + (up ? count - 1 : 1)) % count;
+        } else s_selected = (s_selected + (up ? DIM_COUNT - 1 : 1)) % DIM_COUNT;
         ui_dash_refresh();
-    } else if (ok_short && !s_drill) show(true);
+    } else if (ok_short && !s_drill) { s_agent_selected = 0; show(true); }
     return true;
 }
 

@@ -275,10 +275,28 @@ static void do_sync(void) {
     snprintf(url, sizeof(url), "%s/api/snapshot", net.service_url);
     if (http_read_all(url, net.device_token, body, sizeof(body), &status) &&
         status == 200) {
-        app_snapshot_t snap;
+        static app_snapshot_t snap;
         if (app_snapshot_parse(body, strlen(body), &snap)) {
             snapshot_ok = true;
+            if (strcmp(rt->badge.name, snap.badge_name) != 0 ||
+                strcmp(rt->badge.role, snap.badge_role) != 0) {
+                strlcpy(rt->badge.name, snap.badge_name, sizeof(rt->badge.name));
+                strlcpy(rt->badge.role, snap.badge_role, sizeof(rt->badge.role));
+                app_store_save_badge(&rt->badge);
+            }
+            // A cached snapshot may be minutes old. Only its response timestamp
+            // represents current service time; keep generatedAt for freshness.
+            int64_t server_now_ms = snap.served_at_ms ?
+                snap.served_at_ms : snap.generated_at_ms;
             struct timeval tv;
+            gettimeofday(&tv, NULL);
+            int64_t local_now_ms = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+            int64_t drift = local_now_ms - server_now_ms;
+            if (server_now_ms > 0 && (drift > 60000 || drift < -60000)) {
+                struct timeval set = { .tv_sec = server_now_ms / 1000,
+                                       .tv_usec = 0 };
+                settimeofday(&set, NULL);
+            }
             gettimeofday(&tv, NULL);
             rt->snap_received_at_ms =
                 (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
@@ -291,13 +309,6 @@ static void do_sync(void) {
             }
             app_store_save_snapshot_json(body);
             app_store_save_last_sync_ms(rt->snap_received_at_ms);
-            // generatedAt 对时:偏差超 60 秒才动系统时钟,避免抖动。
-            int64_t drift = rt->snap_received_at_ms - snap.generated_at_ms;
-            if (drift > 60000 || drift < -60000) {
-                struct timeval set = { .tv_sec = snap.generated_at_ms / 1000,
-                                       .tv_usec = 0 };
-                settimeofday(&set, NULL);
-            }
             app_runtime_publish(APP_EVENT_SNAPSHOT_UPDATED);
 
             if (snap.bundle_version > app_store_bundle_version()) {

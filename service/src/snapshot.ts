@@ -39,7 +39,11 @@ export interface SnapshotAccount {
 export interface Snapshot {
   schema: 1;
   generatedAt: string;
+  /** Response time, distinct from cached reading time; used for device clock sync. */
+  servedAt?: string;
   dailyTokens: { used: number | null; coverage?: "local-agent-logs"; collectedAt?: string };
+  agents: { agent: string; dailyTokens: number | null; weeklyTokens: number | null;
+    rolling5h: SnapshotQuota | null; weekly: SnapshotQuota | null }[];
   badgeName: string;
   badgeRole: string;
   accounts: SnapshotAccount[];
@@ -74,7 +78,7 @@ function toSnapshotQuota(
   };
 }
 
-const PROVIDER_ORDER: ProviderId[] = ["local", "claude", "glm", "deepseek", "chatgpt"];
+const PROVIDER_ORDER: ProviderId[] = ["local", "claude", "glm", "deepseek", "codex"];
 
 /**
  * Build a snapshot from collector results. Pure apart from `now`.
@@ -134,6 +138,14 @@ export function buildSnapshot(input: {
     const count = local?.dailyTokens;
     dailyUsed = local?.ok && count != null && Number.isSafeInteger(count) && count >= 0 ? count : null;
   }
+  const codex = results.get("codex");
+  const agents = (local?.ok ? local.agentUsage ?? [] : []).slice(0, 8).map(a => ({
+    agent: a.agent,
+    dailyTokens: a.dailyTokens,
+    weeklyTokens: a.weeklyTokens,
+    rolling5h: a.agent === "codex" ? toSnapshotQuota(codex?.quotas?.rolling5h) : null,
+    weekly: a.agent === "codex" ? toSnapshotQuota(codex?.quotas?.weekly) : null,
+  }));
   return {
     schema: 1,
     generatedAt: localIsoWithOffset(now),
@@ -141,6 +153,7 @@ export function buildSnapshot(input: {
       coverage: "local-agent-logs" as const,
       ...(local?.collectedAt ? { collectedAt: local.collectedAt } : {}),
     } : {}) },
+    agents,
     badgeName: settings.badgeName ?? "",
     badgeRole: settings.badgeRole ?? "",
     accounts,

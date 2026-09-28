@@ -14,6 +14,7 @@ static nvs_handle_t s_nvs;
 
 #define KEY_SETTINGS "set"
 #define KEY_SNAPSHOT "snap"
+#define KEY_BADGE    "badge"
 #define KEY_FOCUS    "focus"
 #define KEY_XP       "xp"
 #define KEY_NET      "net"
@@ -96,6 +97,14 @@ bool app_store_save_snapshot_json(const char *json) {
     if (!s_nvs || strlen(json) + 1 > 4096) return false;   // 快照上限 4KB
     if (nvs_set_str(s_nvs, KEY_SNAPSHOT, json) != ESP_OK) return false;
     return nvs_commit(s_nvs) == ESP_OK;
+}
+
+bool app_store_badge(app_badge_t *out) {
+    return read_blob(KEY_BADGE, out, sizeof(*out));
+}
+
+void app_store_save_badge(const app_badge_t *badge) {
+    write_blob(KEY_BADGE, badge, sizeof(*badge));
 }
 
 app_focus_state_t app_store_focus(void) {

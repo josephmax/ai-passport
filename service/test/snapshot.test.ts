@@ -178,6 +178,27 @@ test("snapshot: local Agent report supplies daily headline and weekly token budg
   assert.equal(snap.accounts[0]?.quotas.weeklyTokens?.percent, 47);
 });
 
+test("snapshot: agent usage stays separate and only Codex receives observed quotas", () => {
+  const quota = { used: 3, cap: 100, unit: "%" as const,
+    resetAt: "2026-09-30T00:00:00Z", basis: "observed:codex-rate-limit" };
+  const snap = buildSnapshot({ now, results: new Map([
+    ["local", { provider: "local", label: "Local", ok: true,
+      collectedAt: now.toISOString(), dailyTokens: 350,
+      agentUsage: [
+        { agent: "codex", dailyTokens: 300, weeklyTokens: 500 },
+        { agent: "pi", dailyTokens: 50, weeklyTokens: 70 },
+      ] }],
+    ["codex", { provider: "codex", label: "Codex", ok: true,
+      collectedAt: now.toISOString(), quotas: { weekly: quota } }],
+  ] as const), connected: new Set<ProviderId>(["local", "codex"]), weather: null,
+  settings: { primaryAccount: "local", weeklyTokenBudget: null }, assetBundleVersion: 1 });
+  assert.equal(snap.dailyTokens.used, 350);
+  assert.equal(snap.agents[0]?.dailyTokens, 300);
+  assert.equal(snap.agents[0]?.weekly?.used, 3);
+  assert.equal(snap.agents[0]?.rolling5h, null);
+  assert.equal(snap.agents[1]?.weekly, null);
+});
+
 
 test("snapshot: local coverage survives finance-only keys and avoids duplicate provider totals", () => {
   const local: CollectorResult = { provider: "local", label: "Local", ok: true,

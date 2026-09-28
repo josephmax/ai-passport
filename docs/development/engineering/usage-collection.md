@@ -19,7 +19,7 @@ Store a reading as `{accountId, agentId?, metric, value, unit, intervalStart?, i
 | Provider finance | Documented provider billing or balance API | Actual charge or prepaid balance, separately | Balance changes alone do not prove spend |
 | API receipt | Usage fields returned for requests made through an instrumented SDK/proxy | Per-request Tokens and, with official price or bill, charge | Does not see calls outside that path |
 
-Run each adapter independently with a timeout, rate limit, backoff, and last-good sample. A provider's failure cannot erase another reading. Deduplicate local logs and API receipts by stable request ID when possible; if identity is missing, show separate source totals and do not add them. The hourly device fetch reads the local normalized cache. The portal can show source, freshness, and coverage; the device gets only supported, unit-safe fields.
+Run each adapter independently with a timeout, rate limit, backoff, and last-good sample. A provider's failure cannot erase another reading. Deduplicate local logs and API receipts by stable request ID when possible; if identity is missing, show separate source totals and do not add them. The service refreshes the local cache every 10 minutes by default and at host-local midnight. Until the new day's collection completes, yesterday's daily Token count is masked. The device fetches the cache hourly while awake and connected; midnight is not a server push. The portal can show source, freshness, and coverage; the device gets only supported, unit-safe fields.
 
 ## Provider fit and current gaps
 
@@ -31,7 +31,7 @@ Run each adapter independently with a timeout, rate limit, backoff, and last-goo
 | GLM Coding Plan | Verified plan quota source, if available to the account | Existing heuristic endpoint is experimental; response shape and units need live verification |
 | DeepSeek API | Official balance endpoint plus response `usage` receipts for Tokens | Balance collector now returns a separate `balance` reading; real-account query remains unverified |
 
-The service now separates DeepSeek balance, labels GLM requests correctly and requires an explicit window, and displays local Token totals and fresh Codex quota on the portal. The complete reading contract and durable sample storage remain to be implemented. Keep the existing device snapshot schema until firmware supports the typed fields; unsupported quota fields must be null. Then add verified provider samplers and instrumented API receipts one at a time with account-backed acceptance tests. A single key or local log cannot guarantee complete coverage of every Agent and every account; the UI must report the covered scope.
+The service now separates DeepSeek balance, labels GLM requests correctly and requires an explicit window, and displays local Token totals, per-agent daily/weekly counts, and fresh Codex quota on the portal and device snapshot. Pi, ZCode, and Claude Code quota slots stay null without verified sources. The complete reading contract and durable sample storage remain to be implemented. Add verified provider samplers and instrumented API receipts one at a time with account-backed acceptance tests. A single key or local log cannot guarantee complete coverage of every Agent and every account; the UI must report the covered scope.
 
 ## References
 

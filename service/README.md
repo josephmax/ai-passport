@@ -56,7 +56,7 @@ Environment (`.env`, see `.env.example`):
 | `PORTAL_PASSWORD` | — | Config-portal login password (required; without it the portal is disabled, device API unaffected) |
 | `SESSION_SECRET` | ephemeral | Cookie-signing secret (set it to keep logins across restarts) |
 | `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, etc. | Agent defaults | Optional ccusage data roots on the service host; see [supported sources](https://github.com/ccusage/ccusage#supported-sources) |
-| `SNAPSHOT_REFRESH_MINUTES` | `10` | Background snapshot refresh interval |
+| `SNAPSHOT_REFRESH_MINUTES` | `10` | Background snapshot refresh interval; integer 1–1440 |
 | `DATA_DIR` | `service/data` | Runtime data directory |
 
 Runtime settings live in `data/config.json` (created with defaults on first run):
@@ -100,6 +100,7 @@ fully trusted users.
 {
   "schema": 1,
   "generatedAt": "2026-09-22T06:00:00+08:00",
+  "servedAt": "2026-09-22T06:02:00+08:00",
   "accounts": [{
     "provider": "local",
     "label": "Local Agents",
@@ -110,6 +111,12 @@ fully trusted users.
     }
   }],
   "dailyTokens": { "used": 32000, "coverage": "local-agent-logs" },
+  "agents": [
+    { "agent": "codex", "dailyTokens": 30000, "weeklyTokens": 410000,
+      "rolling5h": null, "weekly": { "used": 3, "cap": 100, "unit": "%", "resetAt": "...", "percent": 3 } },
+    { "agent": "pi", "dailyTokens": 2000, "weeklyTokens": 2000,
+      "rolling5h": null, "weekly": null }
+  ],
   "badgeName": "Example",
   "badgeRole": "Role",
   "weather": { "code": 61, "kind": "rain", "sunrise": "06:12", "sunset": "18:05", "city": "Shanghai" },
@@ -117,7 +124,9 @@ fully trusted users.
 }
 ```
 
-Additive fields beyond the spec: `percent` (server-computed, one decimal, null
+`generatedAt` identifies when the cached readings were produced; `servedAt`
+is set anew on each response and is used for device clock calibration. Additive
+fields beyond the spec: `percent` (server-computed, one decimal, null
 without a cap — devices only render), `kind` (normalized weather), and quota
 `basis` / account `error` for degraded providers. Rules:
 
@@ -127,10 +136,11 @@ without a cap — devices only render), `kind` (normalized weather), and quota
     `{ remaining, currency, basis }`; its Token quota fields stay null.
   - **GLM** is experimental. Only explicit hours/requests and a recognized
     300/10080-minute window can map to quotas; ambiguous readings stay null.
-  - **Codex quota** reads recent local `rate_limits` observations, maps windows
+- **Codex quota** reads recent local `rate_limits` observations, maps windows
     by duration (not primary/secondary order), and expires samples after one
     hour or their reset. Unit is `%`; no vendor credential is read. This is
-    the current local Codex profile, not ChatGPT web quota or a bill.
+    local Codex sessions, without verified account binding; it is not ChatGPT
+    web quota or a bill.
 - A failing collector never breaks the snapshot: the account stays listed with
   `error` and null quotas.
 - The local Agent collector invokes pinned `ccusage` in offline JSON mode and
@@ -141,8 +151,16 @@ without a cap — devices only render), `kind` (normalized weather), and quota
 - With the local collector, `dailyTokens.used` is the observed local Agent
   total and `coverage` is `local-agent-logs`. Finance-only accounts do not
   erase that total, and provider counts are not added again. A failed local
-  reading stays null.
-  The badge fields come from the authenticated Badge page. The device retains
+  reading stays null. The service refreshes at host-local midnight as well as
+  every configured interval (10 minutes by default). Until the new day's
+  collection completes, requests receive a null daily count; weekly local
+  counts are also masked at the Monday boundary. The Codex source uses the
+  `codex` provider ID; old `chatgpt` primary settings migrate on load.
+  `agents` retains up to eight per-agent daily/weekly counts; quota slots are
+  independent and null without a verified reading. Cached reads are included
+  in Token counts. The badge fields come from the authenticated Badge page;
+  on the device they are persisted in a separate NVS key and rewritten only
+  when changed. The device retains
   the last snapshot when offline.
 
 ## Asset bundles (APB1)

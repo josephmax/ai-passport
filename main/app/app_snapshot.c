@@ -53,6 +53,28 @@ static bool parse_account(const cJSON *node, app_account_t *acc) {
     return acc->provider[0] != '\0';
 }
 
+static bool parse_agent(const cJSON *node, app_agent_t *agent) {
+    memset(agent, 0, sizeof(*agent));
+    if (!cJSON_IsObject(node)) return false;
+    copy_str(agent->agent, sizeof(agent->agent),
+             cJSON_GetObjectItemCaseSensitive(node, "agent"));
+    const cJSON *daily = cJSON_GetObjectItemCaseSensitive(node, "dailyTokens");
+    const cJSON *weekly = cJSON_GetObjectItemCaseSensitive(node, "weeklyTokens");
+    if (cJSON_IsNumber(daily) && isfinite(daily->valuedouble) && daily->valuedouble >= 0) {
+        agent->has_daily_tokens = true;
+        agent->daily_tokens = daily->valuedouble;
+    }
+    if (cJSON_IsNumber(weekly) && isfinite(weekly->valuedouble) && weekly->valuedouble >= 0) {
+        agent->has_weekly_tokens = true;
+        agent->weekly_tokens = weekly->valuedouble;
+    }
+    agent->has_rolling5h = parse_quota(
+        cJSON_GetObjectItemCaseSensitive(node, "rolling5h"), &agent->rolling5h);
+    agent->has_weekly = parse_quota(
+        cJSON_GetObjectItemCaseSensitive(node, "weekly"), &agent->weekly);
+    return agent->agent[0] != '\0';
+}
+
 bool app_snapshot_parse(const char *json, size_t len, app_snapshot_t *out) {
     memset(out, 0, sizeof(*out));
     if (json == NULL || len == 0) return false;
@@ -83,6 +105,12 @@ bool app_snapshot_parse(const char *json, size_t len, app_snapshot_t *out) {
         app_snapshot_parse_iso8601(generated->valuestring, &gen_s)) {
         out->generated_at_ms = gen_s * 1000;
     }
+    const cJSON *served = cJSON_GetObjectItemCaseSensitive(root, "servedAt");
+    int64_t served_s = 0;
+    if (cJSON_IsString(served) &&
+        app_snapshot_parse_iso8601(served->valuestring, &served_s)) {
+        out->served_at_ms = served_s * 1000;
+    }
 
     const cJSON *accounts = cJSON_GetObjectItemCaseSensitive(root, "accounts");
     if (cJSON_IsArray(accounts)) {
@@ -93,6 +121,16 @@ bool app_snapshot_parse(const char *json, size_t len, app_snapshot_t *out) {
             if (parse_account(it, &acc)) {
                 out->accounts[out->account_count++] = acc;
             }
+        }
+    }
+
+    const cJSON *agents = cJSON_GetObjectItemCaseSensitive(root, "agents");
+    if (cJSON_IsArray(agents)) {
+        cJSON *it = NULL;
+        cJSON_ArrayForEach(it, agents) {
+            if (out->agent_count >= APP_SNAPSHOT_MAX_AGENTS) break;
+            app_agent_t agent;
+            if (parse_agent(it, &agent)) out->agents[out->agent_count++] = agent;
         }
     }
 

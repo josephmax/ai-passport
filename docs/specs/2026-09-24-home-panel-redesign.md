@@ -106,8 +106,8 @@ RUNNING ──all finished──▶ VICTORY (animation+sound, auto-jump to Home)
 
 ## 8. Headline data scope and formatting
 
-- Scope: the sum of token consumption since local midnight across **all connected Coding accounts** (not the primary-account scope). Aggregated by the local service, delivered with the snapshot; the device only renders.
-- Schema: the snapshot gains `dailyTokens` (form per OQ7; recommended as a top-level aggregate, e.g. `"dailyTokens": { "used": 832000 }`). Offline, the last known value is kept and freshness is covered by the status bar's sync age. Refresh cadence equals the snapshot cadence (hourly + manual sync), not real-time.
+- Scope: Token usage observed in supported Agent logs on the **service host** since local midnight (not an all-account bill or the primary-account scope). The service delivers it with the snapshot; the device only renders.
+- Schema: the snapshot has top-level `dailyTokens`, e.g. `"dailyTokens": { "used": 832000, "coverage": "local-agent-logs" }`. The device may retain an offline snapshot, but hides its today-only value after local midnight. The service collects at midnight and every 10 minutes by default; an awake device pulls hourly or on manual sync.
 - Formatting rules (pure-logic function, covered by host tests):
   - value < 1000: plain integer, no unit (`832`);
   - otherwise 4 significant digits, **truncated toward zero (no rounding)**; units K/M/B/T step at 1e3/1e6/1e9/1e12, using the largest unit with value ≥ 1;
@@ -153,16 +153,14 @@ Selection uses an inset mint outline without shifting content. Usage has three
 rest, phone connection, volume, sync. Rest editing steps by 30 minutes; OK advances
 to the end field then saves, while long OK discards the draft.
 
-`dailyTokens.used` is the local service's all-connected-account total since local
-midnight. Claude logs provide this reading. If any connected collector cannot
-supply a valid daily token count (including providers exposing only balance), the
-aggregate is `null`; the device shows an unavailable value rather than a partial
-total in the normal product behavior. Older cached snapshots without this field
-also show unavailable in the normal behavior. A temporary preview override in
-`main/ui/ui_pet.c` currently displays `200M` when no valid daily reading exists,
-without adding a label on the screen; this is not a measured total and must be
-removed once live data is accepted. Actual
-zero remains zero, and an offline device retains the last snapshot. The unit rule
+`dailyTokens.used` is the service host's observed local Agent Token usage since
+local midnight, with coverage `local-agent-logs`; it is not an all-account bill.
+If that collector cannot supply a valid reading, the aggregate is `null` and the
+device shows an unavailable value. The earlier `200M` firmware preview fallback
+has been removed; it remains only in the design mockup. The service refreshes at
+local midnight and masks the previous day's cached count while the new reading
+is pending. Actual zero remains zero, and an offline device retains its last
+received snapshot until the next successful sync. The unit rule
 uses K/M/B/T, so 1,234,567,890 renders as `1.234B`.
 
 Focus drafts are volatile. The last confirmed count uses a separate NVS key;

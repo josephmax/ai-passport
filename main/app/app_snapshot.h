@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #define APP_SNAPSHOT_MAX_ACCOUNTS 6
+#define APP_SNAPSHOT_MAX_AGENTS 8
 #define APP_SNAPSHOT_LABEL_MAX 24
 #define APP_BADGE_NAME_MAX 32
 #define APP_BADGE_ROLE_MAX 24
@@ -23,7 +24,7 @@ typedef struct {
 } app_quota_t;
 
 typedef struct {
-    char provider[16];     // claude|glm|deepseek|chatgpt
+    char provider[16];     // local|codex|glm|deepseek (legacy claude|chatgpt accepted)
     char label[APP_SNAPSHOT_LABEL_MAX];
     app_quota_t weekly;
     app_quota_t rolling5h;
@@ -34,14 +35,29 @@ typedef struct {
 } app_account_t;
 
 typedef struct {
+    char agent[16];
+    bool has_daily_tokens;
+    bool has_weekly_tokens;
+    double daily_tokens;
+    double weekly_tokens;
+    bool has_rolling5h;
+    bool has_weekly;
+    app_quota_t rolling5h;
+    app_quota_t weekly;
+} app_agent_t;
+
+typedef struct {
     int schema;
     bool has_daily_tokens;     // absent/null is unknown, never zero
-    double daily_tokens;       // all connected accounts, local midnight to snapshot
+    double daily_tokens;       // local Agent logs since host-local midnight
     char badge_name[APP_BADGE_NAME_MAX]; // UTF-8 display name; empty uses device placeholder
     char badge_role[APP_BADGE_ROLE_MAX]; // optional role shown below the name
     int64_t generated_at_ms;   // 已折算为本地历元毫秒
+    int64_t served_at_ms;      // 本次响应时间;与缓存生成时间分开用于校时
     int account_count;         // 主力账户(服务端保证第一位)在前
     app_account_t accounts[APP_SNAPSHOT_MAX_ACCOUNTS];
+    int agent_count;
+    app_agent_t agents[APP_SNAPSHOT_MAX_AGENTS];
     int weather_code;          // WMO
     char city[24];
     int sunrise_min;           // "06:12" -> 372

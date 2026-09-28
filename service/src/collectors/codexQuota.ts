@@ -80,7 +80,7 @@ async function readRecentSamples(root: string): Promise<string[]> {
 }
 
 export class CodexQuotaCollector implements Collector {
-  readonly provider = "chatgpt" as const;
+  readonly provider = "codex" as const;
   readonly label = "Codex quota";
   private lastRunAt: string | null = null;
   private lastOkAt: string | null = null;
@@ -96,7 +96,7 @@ export class CodexQuotaCollector implements Collector {
       const sample = samples.sort((a, b) => Date.parse(b.observedAt) - Date.parse(a.observedAt))[0];
       if (!sample || !Object.keys(sample.quotas).length) throw new Error("没有一小时内且尚未重置的 Codex 额度样本；运行 Codex 后刷新");
       this.lastOkAt = sample.observedAt;
-      this.detail = "Codex 客户端观测额度（非账单），最长保留一小时";
+      this.detail = "本机 Codex 会话观测额度（未绑定登录身份，非账单），最长保留一小时";
       return { ...base, ok: true, collectedAt: sample.observedAt, quotas: sample.quotas };
     } catch {
       this.detail = "没有可用的近期 Codex 额度样本；运行 Codex 后刷新";

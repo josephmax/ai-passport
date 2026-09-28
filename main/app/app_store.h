@@ -32,6 +32,11 @@ typedef struct {
     char device_token[APP_DEV_TOKEN_MAX];
 } app_net_cfg_t;
 
+typedef struct {
+    char name[APP_BADGE_NAME_MAX];
+    char role[APP_BADGE_ROLE_MAX];
+} app_badge_t;
+
 // 打开 NVS 句柄(幂等)。失败则后续读写全部安全降级为内存态。
 void app_store_init(void);
 
@@ -41,6 +46,8 @@ void app_store_save_settings(const app_settings_t *settings);
 // 最后落盘的快照原文(JSON);无则返回 false。max 含终止符。
 bool app_store_snapshot_json(char *buf, size_t cap);
 bool app_store_save_snapshot_json(const char *json);
+bool app_store_badge(app_badge_t *out);
+void app_store_save_badge(const app_badge_t *badge);
 
 app_focus_state_t app_store_focus(void);
 void app_store_save_focus(const app_focus_state_t *focus);

@@ -31,6 +31,7 @@ typedef enum {
 
 typedef struct {
     app_snapshot_t snap;
+    app_badge_t badge;                // 独立 NVS 键；不随用量快照重写
     bool snap_valid;
     int64_t snap_received_at_ms;      // 本机收到快照的时刻(离线标注的参照)
     bool wifi_connected;

@@ -1,6 +1,6 @@
 /** Collector plugin contracts. One failing collector must never break the snapshot. */
 
-export type ProviderId = "local" | "claude" | "glm" | "deepseek" | "chatgpt";
+export type ProviderId = "local" | "claude" | "glm" | "deepseek" | "codex";
 
 export interface QuotaReading {
   used: number | null;
@@ -19,6 +19,8 @@ export interface CollectorResult {
   collectedAt: string;
   /** Actual tokens since host-local midnight; absent/null means unavailable. */
   dailyTokens?: number | null;
+  /** Per-agent local log counts; quotas are collected independently. */
+  agentUsage?: { agent: string; dailyTokens: number; weeklyTokens: number }[];
   /** Independent finance reading; never projected into a token quota. */
   balance?: { remaining: number; currency: string; basis: string };
   error?: string;

@@ -41,9 +41,6 @@ static const char *TAG = "ui_pet";
 #define SCROLL_PX_PER_S 30
 #define WEATHER_SPRITES 3
 #define TICK_MS 33
-// Temporary Home preview while no valid daily Token snapshot is available.
-// A real reading always takes precedence; remove after the live data path is accepted.
-#define HOME_PREVIEW_DAILY_TOKENS "200M"
 
 typedef enum { ACT_RUN = 0, ACT_FIGHT, ACT_SLEEP, ACT_VICTORY, ACT_NONE } act_t;
 
@@ -71,6 +68,7 @@ static lv_obj_t *s_pet_img;
 static act_t s_act_current;
 static uint32_t s_frame_ms;
 static uint16_t s_frame_idx;
+static uint32_t s_last_display_day = UINT32_MAX;
 
 // 胜利动画窗口。
 static bool s_victory_active;
@@ -251,6 +249,9 @@ static void tick(lv_timer_t *t) {
     (void)t;
     if (s_paused || !s_pet || !s_pet_img) return;
     app_runtime_t *rt = app_runtime();
+    int64_t current_s = now_ms() / 1000;
+    if (current_s >= APP_TIME_PLAUSIBLE_S &&
+        app_time_day_index(current_s) != s_last_display_day) ui_pet_refresh();
 
     if (s_victory_active && now_ms() >= s_victory_until_ms) {
         s_victory_active = false;
@@ -333,6 +334,8 @@ void ui_pet_refresh(void) {
     lv_label_set_text_fmt(s_xp_values[1], "%u", rt->xp.total_xp);
     lv_label_set_text_fmt(s_xp_values[2], "%d", app_xp_to_next(rt->xp.total_xp));
     int64_t now = now_ms();
+    s_last_display_day = now / 1000 >= APP_TIME_PLAUSIBLE_S ?
+        app_time_day_index(now / 1000) : UINT32_MAX;
     if (now / 1000 >= APP_TIME_PLAUSIBLE_S) {
         int minute = app_time_min_of_day(now / 1000);
         lv_label_set_text_fmt(s_clock_label, "%02d:%02d", minute / 60, minute % 60);
@@ -358,9 +361,9 @@ void ui_pet_refresh(void) {
     }
     else {
         lv_obj_clear_flag(s_badge_name, LV_OBJ_FLAG_HIDDEN);
-        bool synced_identity = rt->snap_valid && rt->snap.badge_name[0];
-        const char *name = synced_identity ? rt->snap.badge_name : APP_BADGE_DEFAULT_NAME;
-        const char *role = synced_identity ? rt->snap.badge_role : APP_BADGE_DEFAULT_ROLE;
+        bool synced_identity = rt->badge.name[0] != '\0';
+        const char *name = synced_identity ? rt->badge.name : APP_BADGE_DEFAULT_NAME;
+        const char *role = synced_identity ? rt->badge.role : APP_BADGE_DEFAULT_ROLE;
         lv_point_t size;
         lv_text_get_size(&size, name, &app_font_24, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
         bool compact = size.x > 112;
@@ -383,13 +386,14 @@ void ui_pet_refresh(void) {
         lv_label_set_text(s_head_note, s_home.draft ? "确认后将重新开始" : "已获经验保留");
     } else {
         lv_label_set_text(s_head_title, "今日 TOKEN");
-        if (rt->snap_valid && rt->snap.has_daily_tokens) {
+        if (rt->snap_valid && rt->snap.has_daily_tokens &&
+            app_time_same_local_day(rt->snap.generated_at_ms / 1000, now / 1000)) {
             app_fmt_daily_tokens(rt->snap.daily_tokens, buf, sizeof(buf));
             lv_label_set_text(s_head_value, buf);
             lv_label_set_text(s_head_note, "全账户消耗");
         } else {
-            lv_label_set_text(s_head_value, HOME_PREVIEW_DAILY_TOKENS);
-            lv_label_set_text(s_head_note, "全账户消耗");
+            lv_label_set_text(s_head_value, "--");
+            lv_label_set_text(s_head_note, "暂无数据");
         }
     }
     lv_label_set_text(s_focus_title, edit ? "番茄数量" : rt->focus.running ? "专注中" : "开始专注");

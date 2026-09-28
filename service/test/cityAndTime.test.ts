@@ -1,7 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CITY_TABLE, findCity, resolveLocation } from "../src/cityTable.js";
-import { localIsoWithOffset, weekWindow } from "../src/util/time.js";
+import { localDateKey, localIsoWithOffset, nextLocalMidnight, weekWindow } from "../src/util/time.js";
+
+test("time: next local midnight uses calendar date and resets the clock", () => {
+  const before = new Date(2026, 8, 27, 23, 59, 59);
+  const next = nextLocalMidnight(before);
+  assert.equal(localDateKey(next), "2026-09-28");
+  assert.equal(next.getHours(), 0);
+  assert.equal(next.getMinutes(), 0);
+  assert.equal(next.getSeconds(), 0);
+});
 
 test("city table: ~30 cities, unique ids, valid coordinates", () => {
   assert.ok(CITY_TABLE.length >= 30, `expected >=30 cities, got ${CITY_TABLE.length}`);

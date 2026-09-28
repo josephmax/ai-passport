@@ -8,6 +8,16 @@
 
 const PAD = (n: number, w = 2): string => String(n).padStart(w, "0");
 
+/** Calendar date in the service host's local timezone. */
+export function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${PAD(date.getMonth() + 1)}-${PAD(date.getDate())}`;
+}
+
+/** The next local midnight, using calendar arithmetic to handle DST. */
+export function nextLocalMidnight(now: Date): Date {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+}
+
 /** `2026-09-22T06:00:00+08:00` style ISO string in host-local time. */
 export function localIsoWithOffset(d: Date): string {
   const offsetMin = -d.getTimezoneOffset();

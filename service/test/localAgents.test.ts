@@ -4,13 +4,18 @@ import { LocalAgentsCollector, parseLocalUsage } from "../src/collectors/localAg
 
 const now = new Date(2026, 8, 25, 12, 0);
 const report = { daily: [
-  { period: "2026-09-24", totalTokens: 120, agents: [{ agent: "claude" }] },
-  { period: "2026-09-25", totalTokens: 350, agents: [{ agent: "codex" }, { agent: "opencode" }] },
+  { period: "2026-09-24", totalTokens: 120, agents: [{ agent: "claude", totalTokens: 120 }] },
+  { period: "2026-09-25", totalTokens: 350, agents: [{ agent: "codex", totalTokens: 300 }, { agent: "opencode", totalTokens: 50 }] },
 ] };
 
 test("local agents: unified daily rows give today's and this week's totals", () => {
   assert.deepEqual(parseLocalUsage(report, now), {
     dailyTokens: 350, weeklyTokens: 470, agents: ["claude", "codex", "opencode"],
+    agentUsage: [
+      { agent: "codex", dailyTokens: 300, weeklyTokens: 300 },
+      { agent: "opencode", dailyTokens: 50, weeklyTokens: 50 },
+      { agent: "claude", dailyTokens: 0, weeklyTokens: 120 },
+    ],
   });
   assert.equal(parseLocalUsage({ daily: [report.daily[0]] }, now)?.dailyTokens, 0);
   assert.equal(parseLocalUsage({ daily: [] }, now), null);
@@ -26,6 +31,7 @@ test("local agents: collector invokes ccusage offline and reports valid usage", 
   const result = await collector.collect(now);
   assert.equal(result.ok, true);
   assert.equal(result.dailyTokens, 350);
+  assert.equal(result.agentUsage?.[0]?.agent, "codex");
   assert.equal(result.quotas?.weeklyTokens?.used, 470);
   assert.deepEqual(args.slice(0, 5), ["daily", "--since", "2026-09-21", "--until", "2026-09-25"]);
   assert.ok(args.includes("--offline"));

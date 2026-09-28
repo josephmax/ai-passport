@@ -52,7 +52,7 @@ npm run gen:placeholder # 生成并检查默认占位皮肤包 v1
 | `PORTAL_PASSWORD` | — | 配置中心登录口令（必须设置；未设置时配置中心禁用，设备 API 不受影响） |
 | `SESSION_SECRET` | 临时随机 | Cookie 签名密钥（设置后重启不掉登录态） |
 | `CLAUDE_CONFIG_DIR`、`CODEX_HOME` 等 | Agent 默认路径 | 可选的 ccusage 数据目录，位于服务主机；见[支持来源](https://github.com/ccusage/ccusage#supported-sources) |
-| `SNAPSHOT_REFRESH_MINUTES` | `10` | 后台快照刷新间隔（分钟） |
+| `SNAPSHOT_REFRESH_MINUTES` | `10` | 后台快照刷新间隔（分钟），整数 1–1440 |
 | `DATA_DIR` | `service/data` | 运行时数据目录 |
 
 运行时设置保存在 `data/config.json`（首次运行自动生成默认值）：
@@ -94,6 +94,7 @@ Key；配置中心回显仅显示尾 4 位。若要把主机暴露给不完全�
 {
   "schema": 1,
   "generatedAt": "2026-09-22T06:00:00+08:00",
+  "servedAt": "2026-09-22T06:02:00+08:00",
   "accounts": [{
     "provider": "local",
     "label": "Local Agents",
@@ -104,6 +105,12 @@ Key；配置中心回显仅显示尾 4 位。若要把主机暴露给不完全�
     }
   }],
   "dailyTokens": { "used": 32000, "coverage": "local-agent-logs" },
+  "agents": [
+    { "agent": "codex", "dailyTokens": 30000, "weeklyTokens": 410000,
+      "rolling5h": null, "weekly": { "used": 3, "cap": 100, "unit": "%", "resetAt": "...", "percent": 3 } },
+    { "agent": "pi", "dailyTokens": 2000, "weeklyTokens": 2000,
+      "rolling5h": null, "weekly": null }
+  ],
   "badgeName": "Example",
   "badgeRole": "Role",
   "weather": { "code": 61, "kind": "rain", "sunrise": "06:12", "sunset": "18:05", "city": "上海" },
@@ -113,19 +120,20 @@ Key；配置中心回显仅显示尾 4 位。若要把主机暴露给不完全�
 
 规格之外的附加字段：`percent`（服务端算好，保留 1 位小数，无 cap 时为
 null——设备只渲染）、`kind`（归一化后的天气）、降级口径的 `basis` 与
-账户级 `error`。规则：
+账户级 `error`。`generatedAt` 表示缓存读数生成时间；`servedAt` 每次响应重新生成，
+供设备校时使用。规则：
 
 - 只输出**已连接**的账户；主力账户固定排在 `accounts[0]`。
 - 拿不到的额度维度为 `null`，绝不编造：
   - **DeepSeek** 余额通过账户新增的 `balance` 读数 `{ remaining, currency, basis }` 返回；Token 额度保持 null。
   - **GLM** 为实验性接口；仅明确的小时／请求次数且包含 300／10080 分钟窗口时映射额度，含糊读数保持 null。
-  - **Codex 额度** 读取近期本地 `rate_limits` 样本，按窗口时长而非主／次位置映射。采样超过一小时或额度重置后失效；单位 `%`，不读取厂商凭证。它只代表本机当前 Codex 配置，不是 ChatGPT 网页额度或账单。
+  - **Codex 额度** 读取近期本地 `rate_limits` 样本，按窗口时长而非主／次位置映射。采样超过一小时或额度重置后失效；单位 `%`，不读取厂商凭证。来源是本机 Codex 会话，未核实登录账户绑定；不是 ChatGPT 网页额度或账单。
 - 单个采集器失败不影响快照：账户仍在列表中，带 `error` 且配额为 null。
 - 本地 Agent 采集器调用固定版本 ccusage 的离线 JSON 报告，从本地周一零点
   到今天累加每日记录。它在**服务主机**检测 Claude Code、Codex、OpenCode、
   Gemini CLI 等受支持来源；日志与 API Key 不上传。这些 Token 计数不代表
   官方订阅额度或使用百分比。
-- 接入本地采集器时，`dailyTokens.used` 为观测到的本地 Agent 总量，`coverage` 为 `local-agent-logs`。仅提供余额的账户不使总量失效，也不重复叠加供应商计数；本地采集失败时保持 null。名牌字段来自鉴权的名牌页。
+- 接入本地采集器时，`dailyTokens.used` 为观测到的本地 Agent 总量，`coverage` 为 `local-agent-logs`。`agents` 最多保留八个来源的今日／本周 Token 分项（含缓存读取）；5 小时／周额度另行采样，无可靠读数时为 null。仅提供余额的账户不使总量失效，也不重复叠加供应商计数；本地采集失败时保持 null。除默认每 10 分钟的周期采集外，服务在主机本地零点固定刷新；新读数完成前今日用量为 null，周一换周时也屏蔽上周本地 Token。Codex 来源使用 `codex` 标识，旧设置中的 `chatgpt` 主力项在加载时迁移。名牌字段来自鉴权的名牌页；设备将其保存到独立 NVS 键，仅内容变化时重写。
   设备离线时沿用上次快照。
 
 ## 皮肤包（APB1）

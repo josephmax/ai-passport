@@ -36,6 +36,7 @@ static void runtime_restore(void) {
     rt->xp = app_store_xp();
     rt->focus = app_store_focus();
     rt->focus_preset = app_store_focus_preset();
+    bool badge_saved = app_store_badge(&rt->badge);
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -60,8 +61,13 @@ static void runtime_restore(void) {
     // 写穿金丝雀 → Stack protection fault(首次真机刷写即中招)。
     static char json[4096];
     if (app_store_snapshot_json(json, sizeof(json))) {
-        app_snapshot_t snap;
+        static app_snapshot_t snap;
         if (app_snapshot_parse(json, strlen(json), &snap)) {
+            if (!badge_saved) {
+                strlcpy(rt->badge.name, snap.badge_name, sizeof(rt->badge.name));
+                strlcpy(rt->badge.role, snap.badge_role, sizeof(rt->badge.role));
+                app_store_save_badge(&rt->badge);
+            }
             rt->snap = snap;
             rt->snap_valid = true;
             rt->snap_received_at_ms = now;

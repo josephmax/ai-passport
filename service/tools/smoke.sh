@@ -72,6 +72,10 @@ echo "$SNAPSHOT" | node -e '
     const j=JSON.parse(s);
     if (Buffer.byteLength(s) > 4096) throw new Error("snapshot exceeds device buffer");
     if (j.schema !== 1) throw new Error("schema != 1");
+    if (!Number.isFinite(Date.parse(j.servedAt)) ||
+        Math.abs(Date.now() - Date.parse(j.servedAt)) > 60_000 ||
+        Date.parse(j.generatedAt) > Date.parse(j.servedAt))
+      throw new Error("response time is missing, stale, or older than the reading");
     if (!Array.isArray(j.accounts) || j.accounts.length < 1) throw new Error("no accounts");
     if (!j.accounts[0].quotas) throw new Error("primary account has no quotas");
     if (!j.assetBundle || j.assetBundle.version < 1) throw new Error("no assetBundle.version");
@@ -79,6 +83,10 @@ echo "$SNAPSHOT" | node -e '
     if (process.env.SMOKE_REQUIRE_LOCAL === "1" &&
         (!Number.isSafeInteger(j.dailyTokens.used) || j.dailyTokens.used < 0 ||
          j.dailyTokens.coverage !== "local-agent-logs")) throw new Error("no live local Token reading");
+    if (process.env.SMOKE_REQUIRE_LOCAL === "1" &&
+        (!Array.isArray(j.agents) || !["pi","zcode","codex","claude"].every(
+          name => j.agents.some(a => a.agent === name && Number.isSafeInteger(a.dailyTokens) &&
+            "rolling5h" in a && "weekly" in a)))) throw new Error("local Agent detail or quota slots missing");
     console.log(`[smoke] snapshot OK: ${j.accounts.length} account(s), bundle v${j.assetBundle.version}, weather=${j.weather ? j.weather.city + "/" + j.weather.kind : "n/a"}`);
   });' || fail "snapshot validation failed"
 

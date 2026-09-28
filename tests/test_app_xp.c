@@ -90,6 +90,11 @@ static void test_week_anchor_is_monday(void) {
     // 本地 0 点即日界:负数不出现(时钟校准只向 1970 后走)
     assert(app_time_min_of_day(86399) == 23 * 60 + 59);
     assert(app_time_day_index(86400) == 1);
+    assert(app_time_same_local_day(APP_TIME_PLAUSIBLE_S + 100,
+                                   APP_TIME_PLAUSIBLE_S + 200));
+    assert(!app_time_same_local_day(APP_TIME_PLAUSIBLE_S - 1,
+                                    APP_TIME_PLAUSIBLE_S + 200));
+    assert(!app_time_same_local_day(1727567999LL, 1727568000LL));
     printf("week_anchor ok\n");
 }
 

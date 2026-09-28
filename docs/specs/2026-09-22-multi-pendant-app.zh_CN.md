@@ -72,6 +72,15 @@ UP/DOWN 在三项详情间切换（不回一级页）。每项详情 = 主力账
 {
   "schema": 1,
   "generatedAt": "2026-09-22T06:00:00+08:00",
+  "servedAt": "2026-09-22T06:00:02+08:00",
+  "dailyTokens": { "used": 412000, "coverage": "local-agent-logs" },
+  "badgeName": "Joseph", "badgeRole": "Developer",
+  "agents": [
+    { "agent": "codex", "dailyTokens": 400000, "weeklyTokens": 900000,
+      "rolling5h": null, "weekly": { "used": 3, "cap": 100, "unit": "%", "resetAt": "..." } },
+    { "agent": "pi", "dailyTokens": 12000, "weeklyTokens": 21000,
+      "rolling5h": null, "weekly": null }
+  ],
   "accounts": [{
     "provider": "claude",            // claude|glm|deepseek|chatgpt
     "label": "工作号",
@@ -90,7 +99,7 @@ UP/DOWN 在三项详情间切换（不回一级页）。每项详情 = 主力账
 }
 ```
 
-设备端规则：快照整体落 NVS（键值 JSON 串），离线时展示最后已知并标注"离线 x 小时"。百分比一律服务端算好，设备只渲染。
+设备端规则：快照落 NVS（键值 JSON 串）；姓名和身份另占一个 NVS 键，仅内容变化时重写。Agent 明细展示各来源今日／本周观测 Token，以及独立采样的 5 小时／周额度；无可靠读数时为 null。离线时展示最后已知并标注"离线 x 小时"。百分比由服务端算好，设备负责渲染。
 
 ## 5. 宠物
 
@@ -175,7 +184,7 @@ RUNNING ──到时──▶ VICTORY(动画+音效,授经验n) ──▶ IDLE
 - 同步：Wi-Fi 连接成功后立即同步一次，此后每小时一次；手动触发（设置页"立即同步"）
 - 拉取：`GET /api/snapshot`，头 `X-Device-Token`；响应即 4.3 快照
 - 素材：快照内 `assetBundle.version` 高于本地时，`GET /assets/bundle_v{N}.bin`（manifest+帧数据顺序打包），流式分块写入 LittleFS，写完原子切换、旧版延迟清理
-- 时间：设备用 SNTP 对本地服务对时（或服务返回 `generatedAt` 校准），作息/今日/本周重置依赖此时钟
+- 时间：设备用每次响应新生成的 `servedAt` 校时，`generatedAt` 保留为缓存读数的时间；作息/今日/本周重置依赖此时钟。兼容没有 `servedAt` 的旧服务。
 
 ## 9. 本地服务组件
 

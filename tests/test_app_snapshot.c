@@ -13,6 +13,7 @@ static const char *SAMPLE =
     "\"badgeName\":\"Joseph\","
     "\"badgeRole\":\"Developer\","
     "\"generatedAt\":\"2026-09-22T06:00:00+08:00\","
+    "\"servedAt\":\"2026-09-22T06:02:00+08:00\","
     "\"accounts\":["
     " {\"provider\":\"claude\",\"label\":\"工作号\",\"quotas\":{"
     "   \"weekly\":{\"used\":62,\"cap\":140,\"unit\":\"h\",\"resetAt\":\"周三\"},"
@@ -21,6 +22,9 @@ static const char *SAMPLE =
     " {\"provider\":\"glm\",\"label\":\"个人\",\"quotas\":{"
     "   \"weeklyTokens\":{\"used\":9000,\"cap\":500000}}}"
     "],"
+    "\"agents\":[{\"agent\":\"codex\",\"dailyTokens\":300,\"weeklyTokens\":500,"
+    "\"rolling5h\":null,\"weekly\":{\"used\":3,\"cap\":100,\"unit\":\"%\"}},"
+    "{\"agent\":\"pi\",\"dailyTokens\":50,\"weeklyTokens\":70,\"rolling5h\":null,\"weekly\":null}],"
     "\"weather\":{\"code\":61,\"sunrise\":\"06:12\",\"sunset\":\"18:05\",\"city\":\"上海\"},"
     "\"assetBundle\":{\"version\":3}"
     "}";
@@ -29,6 +33,7 @@ static void test_parse_sample(void) {
     app_snapshot_t snap;
     assert(app_snapshot_parse(SAMPLE, strlen(SAMPLE), &snap));
     assert(snap.schema == 1);
+    assert(snap.served_at_ms - snap.generated_at_ms == 120000);
     assert(strcmp(snap.badge_name, "Joseph") == 0);
     assert(strcmp(snap.badge_role, "Developer") == 0);
     assert(snap.account_count == 2);
@@ -46,6 +51,11 @@ static void test_parse_sample(void) {
     assert(strcmp(snap.accounts[1].provider, "glm") == 0);
     assert(!snap.accounts[1].has_weekly && !snap.accounts[1].has_rolling5h);
     assert(snap.accounts[1].has_weekly_tokens);
+    assert(snap.agent_count == 2);
+    assert(strcmp(snap.agents[0].agent, "codex") == 0);
+    assert(snap.agents[0].daily_tokens == 300 && snap.agents[0].weekly_tokens == 500);
+    assert(snap.agents[0].has_weekly && !snap.agents[0].has_rolling5h);
+    assert(!snap.agents[1].has_weekly && !snap.agents[1].has_rolling5h);
     // 天气
     assert(snap.weather_code == 61);
     assert(strcmp(snap.city, "上海") == 0);
@@ -123,6 +133,7 @@ static void test_parse_rejects_garbage(void) {
     const char *partial =
         "{\"schema\":1,\"accounts\":[{\"provider\":\"glm\"}],\"generatedAt\":\"x\"}";
     assert(app_snapshot_parse(partial, strlen(partial), &snap));
+    assert(snap.served_at_ms == 0);
     assert(snap.weather_code == 0 && snap.sunrise_min == 0 && snap.sunset_min == 0);
     printf("parse_rejects_garbage ok\n");
 }

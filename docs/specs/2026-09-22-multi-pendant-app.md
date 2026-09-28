@@ -89,6 +89,15 @@ provider wordmark + percentage/value). OK long-press returns to main.
 {
   "schema": 1,
   "generatedAt": "2026-09-22T06:00:00+08:00",
+  "servedAt": "2026-09-22T06:00:02+08:00",
+  "dailyTokens": { "used": 412000, "coverage": "local-agent-logs" },
+  "badgeName": "Joseph", "badgeRole": "Developer",
+  "agents": [
+    { "agent": "codex", "dailyTokens": 400000, "weeklyTokens": 900000,
+      "rolling5h": null, "weekly": { "used": 3, "cap": 100, "unit": "%", "resetAt": "..." } },
+    { "agent": "pi", "dailyTokens": 12000, "weeklyTokens": 21000,
+      "rolling5h": null, "weekly": null }
+  ],
   "accounts": [{
     "provider": "claude",            // claude|glm|deepseek|chatgpt
     "label": "work",
@@ -107,9 +116,12 @@ provider wordmark + percentage/value). OK long-press returns to main.
 }
 ```
 
-Device rules: the whole snapshot lands in NVS (one JSON string blob); while
-offline show the last known data tagged "offline x h". Percentages are always
-computed server-side; the device only renders.
+Device rules: the snapshot lands in NVS (one JSON string); badge name and role
+also have their own NVS key, rewritten only when changed. Agent detail shows
+per-source daily/weekly observed Tokens and independently sampled 5-hour/weekly
+quota; unavailable quotas are null. While offline, show the last known data
+tagged "offline x h". Percentages are computed server-side; the device renders
+the readings.
 
 ## 5. Pet
 
@@ -225,9 +237,10 @@ stays unambiguous:
   `GET /assets/bundle_v{N}.bin` (manifest + frame data packed in order),
   streamed in chunks into LittleFS, atomic switch on completion, old version
   cleaned up later
-- Time: the device calibrates against the local service (SNTP or the
-  snapshot's `generatedAt`); the rest window and today/week resets depend on
-  this clock
+- Time: the device calibrates against the response's fresh `servedAt`, while
+  `generatedAt` remains the cached reading's timestamp. Rest windows and
+  today/week resets depend on this clock; a missing `servedAt` is accepted for
+  older servers.
 
 ## 9. Local service components
 
