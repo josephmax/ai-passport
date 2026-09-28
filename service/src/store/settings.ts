@@ -8,7 +8,7 @@
  */
 
 import path from "node:path";
-import { readJson, writeJson } from "./jsonStore.js";
+import { readJson, writeJson, writeJsonSync } from "./jsonStore.js";
 import { CITY_TABLE } from "../cityTable.js";
 
 export type Provider = "local" | "claude" | "glm" | "deepseek" | "codex";
@@ -77,8 +77,19 @@ export class SettingsStore {
     this.settings = { ...DEFAULT_SETTINGS, ...readJson<ServiceSettings>(this.configFile, DEFAULT_SETTINGS) };
     // Older installs selected the Claude-only collector. Local Agents now
     // includes Claude alongside other detected CLI agents.
-    if (this.settings.primaryAccount === "claude") this.settings.primaryAccount = "local";
-    if ((this.settings.primaryAccount as string) === "chatgpt") this.settings.primaryAccount = "codex";
+    let migrated = false;
+    if (this.settings.primaryAccount === "claude") {
+      this.settings.primaryAccount = "local";
+      migrated = true;
+    }
+    if ((this.settings.primaryAccount as string) === "chatgpt") {
+      this.settings.primaryAccount = "codex";
+      migrated = true;
+    }
+    if (migrated) {
+      // Persist the normalized id so the file stops carrying the legacy value.
+      writeJsonSync(this.configFile, this.settings);
+    }
     this.keys = readJson<ServiceKeys>(this.keysFile, DEFAULT_KEYS);
   }
 

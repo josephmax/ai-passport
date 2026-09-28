@@ -39,6 +39,7 @@ static void play_pcm(const int16_t *pcm, size_t samples, uint8_t volume) {
     // 音量只由 codec 侧(VOLUME_PERCENT)控制:若样本再按同比例缩放,
     // 实际衰减是平方,听感明显偏小。
     while (samples > 0) {
+        if (s_stop) break;   // app_audio_fx_stop():按键可打断长音效
         size_t n = samples < CHUNK_SAMPLES ? samples : CHUNK_SAMPLES;
         memcpy(chunk, pcm, n * sizeof(int16_t));
         if (bsp_audio_write(chunk, n * sizeof(int16_t)) != ESP_OK) break;

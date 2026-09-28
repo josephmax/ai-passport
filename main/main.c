@@ -68,7 +68,7 @@ static void runtime_restore(void) {
                 strlcpy(rt->badge.role, snap.badge_role, sizeof(rt->badge.role));
                 app_store_save_badge(&rt->badge);
             }
-            rt->snap = snap;
+            app_runtime_set_snapshot(&snap);
             rt->snap_valid = true;
             rt->snap_received_at_ms = now;
             rt->weather_code = snap.weather_code;

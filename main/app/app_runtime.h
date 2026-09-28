@@ -30,7 +30,6 @@ typedef enum {
 } app_event_id_t;
 
 typedef struct {
-    app_snapshot_t snap;
     app_badge_t badge;                // 独立 NVS 键；不随用量快照重写
     bool snap_valid;
     int64_t snap_received_at_ms;      // 本机收到快照的时刻(离线标注的参照)
@@ -58,3 +57,11 @@ typedef struct {
 app_runtime_t *app_runtime(void);
 
 void app_runtime_publish(app_event_id_t id);   // 持有者写完状态后广播
+
+// 快照不内嵌在 runtime 里直读直写:整结构体约 3.4KB,LVGL 任务(7KB 栈)
+// 放不下安全整拷,免锁直读又会撕裂 64 位/double 字段。改为双缓冲:
+// 写方整份拷入非活动缓冲后翻转活动指针;读方取活动指针。
+// 读方在一次刷新调用内持有指针是安全的:该缓冲要到"再下一次"更新才会
+// 被回收,而两次更新至少隔一次完整 HTTP 同步,渲染只需毫秒级。
+void app_runtime_set_snapshot(const app_snapshot_t *snap);
+const app_snapshot_t *app_runtime_snap(void);

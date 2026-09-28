@@ -104,13 +104,25 @@ static esp_err_t portal_get(httpd_req_t *req) {
 }
 
 static esp_err_t portal_post(httpd_req_t *req) {
-    char body[512] = "";
+    // 表单静态缓冲:httpd 任务栈默认 4KB,栈上开 1KB 会挤;URL 编码后的
+    // ssid(32×3)+pass(64×3)+url+code 合法长度可达 512 以上。
+    static char body[1024];
+    const int cap = (int)sizeof(body) - 1;
     int total = req->content_len;
-    if (total > (int)sizeof(body) - 1) total = (int)sizeof(body) - 1;
-    int got = httpd_req_recv(req, body, total);
-    if (got <= 0) {
+    if (total <= 0 || total > cap) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
         return ESP_FAIL;
+    }
+    // 手机浏览器会把表单拆成多个 TCP 段:单次 recv 曾把 body 截断在字段
+    // 中间,却仍回"已收到"——必须循环读完整个 body 才能解析。
+    int got = 0;
+    while (got < total) {
+        int n = httpd_req_recv(req, body + got, total - got);
+        if (n <= 0) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
+            return ESP_FAIL;
+        }
+        got += n;
     }
     body[got] = '\0';
 
@@ -120,11 +132,17 @@ static esp_err_t portal_post(httpd_req_t *req) {
                          sizeof(form.net.service_url)) &&
               form_field(body, "code", form.code, sizeof(form.code));
     form_field(body, "pass", form.net.password, sizeof(form.net.password));
-
-    httpd_resp_send(req, PAGE_SAVED, HTTPD_RESP_USE_STRLEN);
-    if (ok && s_queue) {
-        xQueueSend(s_queue, &form, 0);   // 慢活交给 prov_task
+    if (!ok) {
+        // 解析失败必须如实报错,绝不回"已收到"。
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
+        return ESP_FAIL;
     }
+    if (!s_queue) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, NULL);
+        return ESP_FAIL;
+    }
+    httpd_resp_send(req, PAGE_SAVED, HTTPD_RESP_USE_STRLEN);
+    xQueueSend(s_queue, &form, 0);   // 慢活交给 prov_task
     return ESP_OK;
 }
 

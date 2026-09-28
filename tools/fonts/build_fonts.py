@@ -30,9 +30,9 @@ BASE = (
     + "·—…～°％：；！？、。，“”‘’（）《》【】"
 )
 
-# 24px 大字号只用于页面/卡片标题 —— 单独的小字符集控制 Flash 体积
-# (全量 686 字 24px 约 1.1MB,远超规格 100–200KB 字体预算)。
-TITLE_GLYPHS = "设置仪表盘宠物周额度小时本Token起始结束连接手机返回用量亮度音自动息屏作时间取消全部计经验分钟你的名字"
+# 24px 大字号用于页面/卡片标题与设置页 ADJUST 大数值 —— 单独的小字符集
+# 控制 Flash 体积(全量 686 字 24px 约 1.1MB,远超规格 100–200KB 字体预算)。
+TITLE_GLYPHS = "设置仪表盘宠物周额度小时本Token起始结束连接手机返回用量亮度音自动息屏作时间取消全部计经验分钟你的名字秒"
 BADGE_NAME_GLYPHS = (ROOT / "main" / "fonts" / "badge_name_glyphs.txt").read_text(encoding="utf-8").strip()
 
 # CJK 与全角区段(扫描目标)

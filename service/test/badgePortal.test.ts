@@ -44,3 +44,32 @@ test("badge portal saves a renderable name and refreshes the device snapshot", a
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("portal login: repeated wrong passwords lock the client out temporarily", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "passport-badge-"));
+  const settings = new SettingsStore(dir);
+  const app = Fastify();
+  try {
+    await app.register(cookie, { secret: "test-secret-long-enough" });
+    await app.register(formbody);
+    registerPortal(app, {
+      auth: { password: "test-password", secret: "test-secret-long-enough" },
+      settings,
+      refreshSnapshot: async () => {},
+    } as PortalDeps);
+
+    for (let i = 0; i < 10; i++) {
+      const r = await app.inject({ method: "POST", url: "/portal/login", payload: { password: "wrong" } });
+      assert.equal(r.statusCode, 302);
+      assert.match(r.headers.location ?? "", /\/portal\/login/);
+    }
+    // Even the correct password is refused from the throttled client.
+    const blocked = await app.inject({ method: "POST", url: "/portal/login", payload: { password: "test-password" } });
+    assert.equal(blocked.statusCode, 302);
+    assert.match(blocked.headers.location ?? "", /\/portal\/login/);
+    assert.doesNotMatch(blocked.headers.location ?? "", /\/portal$/);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

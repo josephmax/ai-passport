@@ -30,6 +30,7 @@ import {
 import { BundleFormatError } from "../assets/bundleFormat.js";
 import { esc, flashFromQuery, layout, type PortalTab } from "./html.js";
 import { validateBadgeName, validateBadgeRole } from "./badgeName.js";
+import { FailureLimiter } from "../util/rateLimit.js";
 import {
   SESSION_COOKIE,
   SessionStore,
@@ -73,6 +74,9 @@ function fmtTime(iso: string | null): string {
 
 export function registerPortal(app: FastifyInstance, deps: PortalDeps): void {
   const sessions = new SessionStore();
+  // Plaintext-HTTP password endpoint: cap failed logins per client IP so the
+  // portal password cannot be brute-forced from the LAN.
+  const loginFailures = new FailureLimiter(10, 10 * 60_000);
 
   // ---- auth guard ----------------------------------------------------------
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
@@ -125,10 +129,16 @@ export function registerPortal(app: FastifyInstance, deps: PortalDeps): void {
   app.post("/portal/login", async (request, reply) => {
     const body = (request.body ?? {}) as { password?: unknown };
     const pw = typeof body.password === "string" ? body.password : "";
+    const now = new Date();
+    if (loginFailures.isBlocked(request.ip, now)) {
+      return redirect(reply, "/portal/login", undefined, "尝试过多，请稍后再试");
+    }
     if (!checkPassword(pw, deps.auth.password)) {
+      loginFailures.recordFailure(request.ip, now);
       return redirect(reply, "/portal/login", undefined, "口令错误");
     }
-    const sid = sessions.create(new Date());
+    loginFailures.reset(request.ip);
+    const sid = sessions.create(now);
     reply.setCookie(SESSION_COOKIE, sid, {
       signed: true,
       httpOnly: true,

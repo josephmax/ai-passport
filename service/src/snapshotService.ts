@@ -6,6 +6,7 @@
 
 import { runCollectors } from "./collectors/registry.js";
 import type { Collector, ProviderId } from "./collectors/types.js";
+import { QUOTA_MAX_AGE_MS } from "./collectors/codexQuota.js";
 import { buildSnapshot, type Snapshot } from "./snapshot.js";
 import type { WeatherService } from "./weather.js";
 import type { SettingsStore } from "./store/settings.js";
@@ -124,7 +125,7 @@ export class SnapshotService {
         agents: this.cache.agents.map(agent => {
           const age = nowMs - Date.parse(this.cache!.accounts.find(a => a.provider === "codex")?.collectedAt ?? "");
           const staleQuota = (q: typeof agent.weekly) => q &&
-            (!Number.isFinite(age) || age > 60 * 60_000 ||
+            (!Number.isFinite(age) || age > QUOTA_MAX_AGE_MS ||
              (q.resetAt && Date.parse(q.resetAt) <= nowMs)) ? null : q;
           return { ...agent, dailyTokens: dayChanged ? null : agent.dailyTokens,
             weeklyTokens: weekChanged ? null : agent.weeklyTokens,
@@ -139,7 +140,7 @@ export class SnapshotService {
         for (const kind of ["weekly", "rolling5h"] as const) {
           const quota = quotas[kind];
           if (quota?.basis === "observed:codex-rate-limit" &&
-              (!Number.isFinite(age) || age > 60 * 60_000 ||
+              (!Number.isFinite(age) || age > QUOTA_MAX_AGE_MS ||
                (quota.resetAt && Date.parse(quota.resetAt) <= nowMs))) quotas[kind] = null;
         }
         return { ...account, quotas };

@@ -386,9 +386,10 @@ void ui_pet_refresh(void) {
         lv_label_set_text(s_head_note, s_home.draft ? "确认后将重新开始" : "已获经验保留");
     } else {
         lv_label_set_text(s_head_title, "今日 TOKEN");
-        if (rt->snap_valid && rt->snap.has_daily_tokens &&
-            app_time_same_local_day(rt->snap.generated_at_ms / 1000, now / 1000)) {
-            app_fmt_daily_tokens(rt->snap.daily_tokens, buf, sizeof(buf));
+        const app_snapshot_t *snap = app_runtime_snap();
+        if (rt->snap_valid && snap->has_daily_tokens &&
+            app_time_same_local_day(snap->generated_at_ms / 1000, now / 1000)) {
+            app_fmt_daily_tokens(snap->daily_tokens, buf, sizeof(buf));
             lv_label_set_text(s_head_value, buf);
             lv_label_set_text(s_head_note, "全账户消耗");
         } else {

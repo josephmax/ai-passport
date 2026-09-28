@@ -56,7 +56,8 @@ export class DeviceRegistry {
   }
 
   private async save(): Promise<void> {
-    await writeJson(this.file, { devices: this.devices });
+    // Holds bearer tokens; keep the same 0600 protection as keys.json.
+    await writeJson(this.file, { devices: this.devices }, 0o600);
   }
 
   // ---- pairing codes -------------------------------------------------------

@@ -62,15 +62,16 @@ void ui_theme_status_bar_refresh(ui_status_bar_t *bar) {
     char buf[48];
     if (!rt->snap_valid) snprintf(buf, sizeof(buf), "%s", rt->paired ? "等待同步" : "未配网");
     else {
+        const app_snapshot_t *snap = app_runtime_snap();
         struct timeval tv;
         gettimeofday(&tv, NULL);
         int64_t now = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
         if (!rt->wifi_connected) {
-            int hours = app_snapshot_offline_hours(rt->snap.generated_at_ms, now);
+            int hours = app_snapshot_offline_hours(snap->generated_at_ms, now);
             snprintf(buf, sizeof(buf), "离线 %d 小时", hours);
         } else {
             char age[24];
-            app_fmt_ago(now, rt->snap.generated_at_ms, age, sizeof(age));
+            app_fmt_ago(now, snap->generated_at_ms, age, sizeof(age));
             snprintf(buf, sizeof(buf), "同步于 %s", age);
         }
     }

@@ -13,6 +13,7 @@ import type { FastifyInstance } from "fastify";
 import { DeviceRegistry } from "./store/devices.js";
 import type { SnapshotService } from "./snapshotService.js";
 import type { AssetPublisher } from "./assets/publisher.js";
+import { FailureLimiter } from "./util/rateLimit.js";
 
 export interface DeviceApiDeps {
   devices: DeviceRegistry;
@@ -22,12 +23,21 @@ export interface DeviceApiDeps {
 
 export function registerDeviceApi(app: FastifyInstance, deps: DeviceApiDeps): void {
   const { devices, snapshots, publisher } = deps;
+  // 6-digit codes are brute-forceable inside their 10-minute TTL (~1.7k req/s
+  // exhausts the space); cap failed attempts per client IP instead. A
+  // legitimate pairing needs exactly one attempt.
+  const pairFailures = new FailureLimiter(10, 10 * 60_000);
 
   app.get("/api/health", async () => ({ ok: true, service: "ai-passport-local-service", now: new Date().toISOString() }));
 
   app.post<{ Body: { code?: unknown; deviceName?: unknown } }>(
     "/api/pair",
     async (request, reply) => {
+      const now = new Date();
+      if (pairFailures.isBlocked(request.ip, now)) {
+        await reply.code(429).send({ error: "too many failed attempts; retry later" });
+        return;
+      }
       const body = request.body ?? {};
       const { code, deviceName } = body as { code?: unknown; deviceName?: unknown };
       if (typeof deviceName !== "string" || deviceName.trim().length === 0) {
@@ -35,14 +45,17 @@ export function registerDeviceApi(app: FastifyInstance, deps: DeviceApiDeps): vo
         return;
       }
       if (!DeviceRegistry.isValidCodeFormat(code)) {
+        pairFailures.recordFailure(request.ip, now);
         await reply.code(403).send({ error: "invalid pairing code" });
         return;
       }
-      const outcome = await devices.pair(code, deviceName.trim(), new Date());
+      const outcome = await devices.pair(code, deviceName.trim(), now);
       if (!outcome.ok) {
+        pairFailures.recordFailure(request.ip, now);
         await reply.code(403).send({ error: `pairing code ${outcome.reason}` });
         return;
       }
+      pairFailures.reset(request.ip);
       await reply.code(200).send({ token: outcome.token });
     },
   );
@@ -56,7 +69,11 @@ export function registerDeviceApi(app: FastifyInstance, deps: DeviceApiDeps): vo
       return;
     }
     const snapshot = await snapshots.get();
-    void devices.touchSync(device.id, new Date()); // fire and forget
+    // Fire-and-forget, but a transient disk error must never take down the
+    // process (unhandled rejection terminates Node >= 15).
+    devices.touchSync(device.id, new Date()).catch((err) => {
+      console.warn("[devices] last-sync save failed:", err instanceof Error ? err.message : err);
+    });
     await reply.code(200).send(snapshot);
   });
 

@@ -14,7 +14,7 @@ static ui_dash_t *s_dash;
 static ui_status_bar_t s_status;
 static lv_obj_t *s_content, *s_hint, *s_title, *s_account;
 static lv_obj_t *s_cards[DIM_COUNT], *s_big[DIM_COUNT], *s_sub[DIM_COUNT], *s_bars[DIM_COUNT];
-static lv_obj_t *s_detail_big, *s_detail_sub, *s_detail_reset, *s_detail_bar;
+static lv_obj_t *s_detail_big, *s_detail_sub, *s_detail_reset, *s_detail_bar, *s_detail_caption;
 static lv_obj_t *s_detail_rows[APP_SNAPSHOT_MAX_ACCOUNTS - 1];
 static int s_selected;
 static int s_agent_selected;
@@ -87,7 +87,8 @@ void ui_dash_refresh(void) {
     if (!s_dash) return;
     ui_theme_status_bar_refresh(&s_status);
     app_runtime_t *rt = app_runtime();
-    const app_account_t *primary = rt->snap_valid && rt->snap.account_count ? &rt->snap.accounts[0] : NULL;
+    const app_snapshot_t *snap = app_runtime_snap();
+    const app_account_t *primary = rt->snap_valid && snap->account_count ? &snap->accounts[0] : NULL;
     char buf[96];
     snprintf(buf, sizeof(buf), "%s · 主力", primary ? provider_label(primary->provider) : "--");
     lv_label_set_text(s_account, buf);
@@ -95,7 +96,7 @@ void ui_dash_refresh(void) {
         for (int i = 0; i < DIM_COUNT; i++) {
             if (i == AGENTS) {
                 ui_theme_select(s_cards[i], i == s_selected);
-                snprintf(buf, sizeof(buf), "%d", rt->snap_valid ? rt->snap.agent_count : 0);
+                snprintf(buf, sizeof(buf), "%d", rt->snap_valid ? snap->agent_count : 0);
                 lv_label_set_text(s_big[i], buf);
                 lv_label_set_text(s_sub[i], "local logs");
                 lv_obj_add_flag(s_bars[i], LV_OBJ_FLAG_HIDDEN);
@@ -109,9 +110,12 @@ void ui_dash_refresh(void) {
         }
     } else {
         lv_label_set_text(s_title, TITLES[s_selected]);
+        lv_label_set_text(s_detail_caption,
+                          s_selected == AGENTS ? "UP / DOWN: Agent" : "其他账户 · 同维度");
         if (s_selected == AGENTS) {
-            const app_agent_t *a = rt->snap_valid && s_agent_selected < rt->snap.agent_count
-                ? &rt->snap.agents[s_agent_selected] : NULL;
+            if (rt->snap_valid && s_agent_selected >= snap->agent_count) s_agent_selected = 0;
+            const app_agent_t *a = rt->snap_valid && s_agent_selected < snap->agent_count
+                ? &snap->agents[s_agent_selected] : NULL;
             lv_label_set_text(s_account, a ? a->agent : "--");
             if (a && a->has_daily_tokens) app_fmt_daily_tokens(a->daily_tokens, buf, sizeof(buf));
             else snprintf(buf, sizeof(buf), "--");
@@ -122,11 +126,12 @@ void ui_dash_refresh(void) {
                 snprintf(buf, sizeof(buf), "Today Token / Week %s", weekly);
             } else snprintf(buf, sizeof(buf), "Today Token / Week --");
             lv_label_set_text(s_detail_sub, buf);
-            number(a && a->has_rolling5h ? &a->rolling5h : NULL, buf, sizeof(buf));
-            char line[96]; snprintf(line, sizeof(line), "5h quota  %s", buf);
+            char value[24];
+            number(a && a->has_rolling5h ? &a->rolling5h : NULL, value, sizeof(value));
+            char line[96]; snprintf(line, sizeof(line), "5h quota  %s", value);
             lv_label_set_text(s_detail_reset, line);
-            number(a && a->has_weekly ? &a->weekly : NULL, buf, sizeof(buf));
-            snprintf(line, sizeof(line), "Week quota  %s", buf);
+            number(a && a->has_weekly ? &a->weekly : NULL, value, sizeof(value));
+            snprintf(line, sizeof(line), "Week quota  %s", value);
             lv_label_set_text(s_detail_rows[0], line);
             lv_obj_clear_flag(s_detail_rows[0], LV_OBJ_FLAG_HIDDEN);
             for (int i = 1; i < APP_SNAPSHOT_MAX_ACCOUNTS - 1; i++)
@@ -147,8 +152,8 @@ void ui_dash_refresh(void) {
         lv_label_set_text(s_detail_sub, buf);
         reset_text(q, buf, sizeof(buf)); lv_label_set_text(s_detail_reset, buf);
         for (int i = 0; i < APP_SNAPSHOT_MAX_ACCOUNTS - 1; i++) {
-            if (rt->snap_valid && i + 1 < rt->snap.account_count) {
-                const app_account_t *a = &rt->snap.accounts[i + 1];
+            if (rt->snap_valid && i + 1 < snap->account_count) {
+                const app_account_t *a = &snap->accounts[i + 1];
                 const app_quota_t *other = quota(a, s_selected);
                 char val[24]; number(other, val, sizeof(val));
                 snprintf(buf, sizeof(buf), "%s   %s%s", provider_label(a->provider), val,
@@ -171,7 +176,7 @@ static void show(bool drill) {
         for (int i = 0; i < DIM_COUNT; i++) {
             s_cards[i] = ui_theme_card(s_content, 8, 37 + i * 60, 224, 56, false);
             ui_theme_label(s_cards[i], 10, 8, 204, &app_font_12, UI_INK_DIM, TITLES[i]);
-            s_big[i] = ui_theme_label(s_cards[i], 10, 21, 204, &lv_font_montserrat_24, UI_INK, "--");
+            s_big[i] = ui_theme_label(s_cards[i], 10, 21, 204, &app_font_24, UI_INK, "--");
             // Context below the number avoids overlap with long four-digit values.
             s_sub[i] = ui_theme_label(s_cards[i], 116, 31, 98, &app_font_12, UI_INK_DIM, "");
             lv_obj_set_style_text_align(s_sub[i], LV_TEXT_ALIGN_RIGHT, 0);
@@ -184,8 +189,7 @@ static void show(bool drill) {
         s_detail_bar = meter(s_content, 14, 107, 212);
         s_detail_sub = ui_theme_label(s_content, 14, 121, 212, &app_font_12, UI_INK_DIM, "");
         s_detail_reset = ui_theme_label(s_content, 14, 142, 212, &app_font_12, UI_ACCENT, "");
-        ui_theme_label(s_content, 14, 164, 212, &app_font_12, UI_INK_DIM,
-                       s_selected == AGENTS ? "UP / DOWN: Agent" : "其他账户 · 同维度");
+        s_detail_caption = ui_theme_label(s_content, 14, 164, 212, &app_font_12, UI_INK_DIM, "");
         for (int i = 0; i < APP_SNAPSHOT_MAX_ACCOUNTS - 1; i++)
             s_detail_rows[i] = ui_theme_label(s_content, 14, 184 + i * 17, 212, &app_font_12, UI_INK, "");
         ui_theme_hint_set(s_hint, "切换", NULL, "返回");
@@ -197,7 +201,8 @@ bool ui_dash_key(bool ok_short, bool ok_long, bool up, bool down) {
     if (ok_long) { if (!s_drill) return false; show(false); }
     else if (up || down) {
         if (s_drill && s_selected == AGENTS) {
-            int count = app_runtime()->snap_valid ? app_runtime()->snap.agent_count : 0;
+            app_runtime_t *rt = app_runtime();
+            int count = rt->snap_valid ? app_runtime_snap()->agent_count : 0;
             if (count > 0) s_agent_selected = (s_agent_selected + (up ? count - 1 : 1)) % count;
         } else s_selected = (s_selected + (up ? DIM_COUNT - 1 : 1)) % DIM_COUNT;
         ui_dash_refresh();

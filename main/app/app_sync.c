@@ -7,6 +7,7 @@
 #include "app_service.h"
 #include "app_snapshot.h"
 #include "app_store.h"
+#include "app_time.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_http_client.h"
@@ -292,7 +293,10 @@ static void do_sync(void) {
             gettimeofday(&tv, NULL);
             int64_t local_now_ms = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
             int64_t drift = local_now_ms - server_now_ms;
-            if (server_now_ms > 0 && (drift > 60000 || drift < -60000)) {
+            // 低于 2020 的服务器时间(误配/垃圾响应)不采纳:把设备时钟
+            // 拨回史前会让日界/作息全错,宁可等下一次同步。
+            if (server_now_ms >= (int64_t)APP_TIME_PLAUSIBLE_S * 1000 &&
+                (drift > 60000 || drift < -60000)) {
                 struct timeval set = { .tv_sec = server_now_ms / 1000,
                                        .tv_usec = 0 };
                 settimeofday(&set, NULL);
@@ -300,7 +304,7 @@ static void do_sync(void) {
             gettimeofday(&tv, NULL);
             rt->snap_received_at_ms =
                 (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-            rt->snap = snap;
+            app_runtime_set_snapshot(&snap);
             rt->snap_valid = true;
             rt->weather_code = snap.weather_code;
             if (snap.sunrise_min > 0 && snap.sunset_min > snap.sunrise_min) {
