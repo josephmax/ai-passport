@@ -7,9 +7,8 @@
 #include "app_assets.h"
 #include "app_debug.h"
 #include "app_focus.h"
-#include "app_net.h"
+#include "app_ble.h"
 #include "app_power.h"
-#include "app_sync.h"
 #include "app_runtime.h"
 #include "app_service.h"
 #include "app_store.h"
@@ -36,7 +35,7 @@ static void runtime_restore(void) {
     rt->xp = app_store_xp();
     rt->focus = app_store_focus();
     rt->focus_preset = app_store_focus_preset();
-    bool badge_saved = app_store_badge(&rt->badge);
+    (void)app_store_badge(&rt->badge);
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -51,33 +50,7 @@ static void runtime_restore(void) {
         app_store_save_focus(&rt->focus);
     }
 
-    app_net_cfg_t net;
-    if (app_store_net(&net)) {
-        rt->paired = net.device_token[0] != '\0';
-        strlcpy(rt->service_url, net.service_url, sizeof(rt->service_url));
-    }
-
-    // 4KB 快照缓冲必须放静态区:主任务栈容不下(默认 3584B),栈上开大会
-    // 写穿金丝雀 → Stack protection fault(首次真机刷写即中招)。
-    static char json[4096];
-    if (app_store_snapshot_json(json, sizeof(json))) {
-        static app_snapshot_t snap;
-        if (app_snapshot_parse(json, strlen(json), &snap)) {
-            if (!badge_saved) {
-                strlcpy(rt->badge.name, snap.badge_name, sizeof(rt->badge.name));
-                strlcpy(rt->badge.role, snap.badge_role, sizeof(rt->badge.role));
-                app_store_save_badge(&rt->badge);
-            }
-            app_runtime_set_snapshot(&snap);
-            rt->snap_valid = true;
-            rt->snap_received_at_ms = now;
-            rt->weather_code = snap.weather_code;
-            if (snap.sunrise_min > 0 && snap.sunset_min > snap.sunrise_min) {
-                rt->sunrise_min = snap.sunrise_min;
-                rt->sunset_min = snap.sunset_min;
-            }
-        }
-    }
+    // BLE restores only a cache whose device and selected host both match.
 #define TEST_SCENE 0   // 临时:强制白天+下雨验证天气精灵/地图滚动;验收后置 0
 #if TEST_SCENE
     rt->weather_code = 63;              // 雨
@@ -121,11 +94,13 @@ void app_main(void) {
         ESP_LOGW(TAG, "电量计不可用,状态条将隐藏电量");
     }
 
+    /* Initialize the radio before Home starts its rendering/animation timers.
+     * On a single C3 core their combined cold-start work can starve IDLE. The
+     * initial UI reads the restored BLE source/status after registration. */
+    if (!app_ble_init()) ESP_LOGE(TAG, "BLE initialization failed");
+
     ui_shell_init();
     ui_shell_boot_refresh();
-
-    app_net_init();
-    app_sync_init();
 
     if (!app_power_init()) {
         ESP_LOGW(TAG, "电源管理任务启动失败(息屏/睡眠不可用)");

@@ -8,6 +8,8 @@
 typedef struct { char key[16]; unsigned char data[512]; size_t size; } record_t;
 static record_t records[12];
 static unsigned count;
+static esp_err_t init_result = ESP_OK;
+static unsigned erases;
 static record_t *find(const char *key) {
     for (unsigned i = 0; i < count; i++) if (!strcmp(records[i].key, key)) return &records[i];
     return NULL;
@@ -33,8 +35,8 @@ esp_err_t nvs_set_blob(nvs_handle_t h, const char *key, const void *data, size_t
 esp_err_t nvs_get_str(nvs_handle_t h, const char *k, char *out, size_t *n) { return nvs_get_blob(h, k, out, n); }
 esp_err_t nvs_set_str(nvs_handle_t h, const char *k, const char *s) { return nvs_set_blob(h, k, s, strlen(s) + 1); }
 esp_err_t nvs_commit(nvs_handle_t h) { (void)h; return ESP_OK; }
-esp_err_t nvs_flash_init(void) { return ESP_OK; }
-esp_err_t nvs_flash_erase(void) { count = 0; return ESP_OK; }
+esp_err_t nvs_flash_init(void) { return init_result; }
+esp_err_t nvs_flash_erase(void) { ++erases; count = 0; return ESP_OK; }
 #define SCALAR(type, name) \
     esp_err_t nvs_get_##name(nvs_handle_t h, const char *k, type *v) { size_t n = sizeof(*v); return nvs_get_blob(h, k, v, &n); } \
     esp_err_t nvs_set_##name(nvs_handle_t h, const char *k, type v) { return nvs_set_blob(h, k, &v, sizeof(v)); }
@@ -43,6 +45,13 @@ SCALAR(int32_t, i32)
 SCALAR(int64_t, i64)
 
 int main(void) {
+    init_result = ESP_ERR_NVS_NO_FREE_PAGES;
+    app_store_init();
+    assert(erases == 0);
+    init_result = ESP_ERR_NVS_NEW_VERSION_FOUND;
+    app_store_init();
+    assert(erases == 0);
+    init_result = ESP_OK;
     app_store_init();
     assert(app_store_focus_preset() == 1);
     app_settings_t setting = app_store_settings();

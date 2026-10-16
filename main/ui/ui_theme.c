@@ -1,6 +1,7 @@
 #include "ui_theme.h"
 #include "app_fmt.h"
 #include "app_runtime.h"
+#include "app_ble.h"
 #include "bsp_display.h"
 #include <stdio.h>
 #include <sys/time.h>
@@ -60,13 +61,13 @@ void ui_theme_status_bar_create(lv_obj_t *parent, ui_status_bar_t *out) {
 void ui_theme_status_bar_refresh(ui_status_bar_t *bar) {
     app_runtime_t *rt = app_runtime();
     char buf[48];
-    if (!rt->snap_valid) snprintf(buf, sizeof(buf), "%s", rt->paired ? "等待同步" : "未配网");
+    if (!rt->snap_valid) snprintf(buf, sizeof(buf), "%s", rt->paired ? "等待同步" : "Bluetooth");
     else {
         const app_snapshot_t *snap = app_runtime_snap();
         struct timeval tv;
         gettimeofday(&tv, NULL);
         int64_t now = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-        if (!rt->wifi_connected) {
+        if (!app_ble_status().ready) {
             int hours = app_snapshot_offline_hours(snap->generated_at_ms, now);
             snprintf(buf, sizeof(buf), "离线 %d 小时", hours);
         } else {
@@ -76,8 +77,8 @@ void ui_theme_status_bar_refresh(ui_status_bar_t *bar) {
         }
     }
     lv_label_set_text(bar->sync, buf);
-    lv_obj_set_style_text_color(bar->sync, lv_color_hex(rt->snap_valid && !rt->wifi_connected ? UI_WARN : UI_INK_DIM), 0);
-    lv_label_set_text(bar->wifi, rt->wifi_connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
+    lv_obj_set_style_text_color(bar->sync, lv_color_hex(rt->snap_valid && !app_ble_status().ready ? UI_WARN : UI_INK_DIM), 0);
+    lv_label_set_text(bar->wifi, rt->mic_active ? LV_SYMBOL_AUDIO : app_ble_status().ready ? LV_SYMBOL_BLUETOOTH : LV_SYMBOL_CLOSE);
     if (rt->battery_soc < 0) lv_obj_add_flag(bar->battery, LV_OBJ_FLAG_HIDDEN);
     else {
         lv_obj_clear_flag(bar->battery, LV_OBJ_FLAG_HIDDEN);

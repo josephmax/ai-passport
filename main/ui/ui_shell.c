@@ -5,7 +5,7 @@
 #include "app_debug.h"
 #include "app_home.h"
 #include "app_power.h"
-#include "app_prov.h"
+#include "app_ble.h"
 #include "app_runtime.h"
 #include "app_service.h"
 #include "app_store.h"
@@ -21,14 +21,36 @@
 #include "ui_pet.h"
 #include "ui_settings.h"
 #include "ui_theme.h"
+#include "ui_event_batch.h"
 #include <sys/time.h>
 
 static const char *TAG = "shell";
 typedef enum { PAGE_HOME, PAGE_USAGE, PAGE_SETTINGS } page_t;
-typedef struct { bsp_btn_t btn; bsp_btn_ev_t event; bool wake_only; } input_event_t;
+typedef struct { bsp_btn_t btn; bsp_btn_ev_t event; bool wake_only; uint32_t confirmation_id; } input_event_t;
 static page_t s_page;
 static app_home_t s_home;
 static QueueHandle_t s_input_queue;
+static lv_obj_t *s_pair_modal, *s_pair_text;
+static bool s_deferred_victory;
+static volatile uint32_t s_visible_confirmation_id;
+static portMUX_TYPE s_event_mux = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t s_pending_events;
+
+static void refresh_pairing(void) {
+    app_ble_status_t ble = app_ble_status();
+    if (ble.confirm) {
+        if (!s_pair_modal) {
+            s_pair_modal = ui_theme_card(lv_layer_top(), 6, 45, 228, 235, true);
+            s_pair_text = ui_theme_label(s_pair_modal, 12, 24, 200, &lv_font_montserrat_14, UI_INK, "");
+            lv_label_set_long_mode(s_pair_text, LV_LABEL_LONG_WRAP);
+        }
+        lv_label_set_text(s_pair_text, ble.prompt);
+        s_visible_confirmation_id = ble.confirmation_id;
+    } else {
+        s_visible_confirmation_id = 0;
+        if (s_pair_modal) { lv_obj_delete(s_pair_modal); s_pair_modal = NULL; s_pair_text = NULL; }
+    }
+}
 
 static int64_t wall_now_ms(void) {
     struct timeval tv;
@@ -37,6 +59,8 @@ static int64_t wall_now_ms(void) {
 }
 
 static void refresh_current(void) {
+    refresh_pairing();
+    ui_pet_set_paused(s_page != PAGE_HOME || app_power_screen_off() || app_runtime()->mic_requested);
     if (s_page == PAGE_HOME) ui_pet_set_navigation(&s_home);
     else if (s_page == PAGE_USAGE) ui_dash_refresh();
     else ui_settings_refresh();
@@ -66,7 +90,6 @@ static void flush_settings_work(void) {
         bsp_lvgl_unlock();
     }
     if (work.save) app_store_save_settings(&work.settings);
-    if (work.cancel_provisioning) app_prov_cancel();
 }
 
 static void process_input(const input_event_t *in) {
@@ -82,6 +105,14 @@ static void process_input(const input_event_t *in) {
         go_home(); // A wake gesture never also confirms/restarts a timer.
         bsp_lvgl_unlock();
         return;
+    }
+    app_ble_status_t ble = app_ble_status();
+    if (ble.confirm || in->confirmation_id) {
+        // The key event carries the prompt visible when it was pressed, not
+        // whichever prompt happens to be current when the queue is drained.
+        if (ble.confirm && in->confirmation_id && in->confirmation_id == ble.confirmation_id && (ok_short || ok_long))
+            app_ble_confirm(ok_short, in->confirmation_id);
+        bsp_lvgl_unlock(); return;
     }
     if (ui_pet_victory_active()) { bsp_lvgl_unlock(); return; }
     app_audio_fx_stop(); // Preserve the user's interruptible audio behavior.
@@ -121,43 +152,69 @@ static void input_task(void *arg) {
 static void on_key(bsp_btn_t btn, bsp_btn_ev_t ev, void *user) {
     (void)user;
     if (!s_input_queue) return;
-    const input_event_t input = {.btn = btn, .event = ev, .wake_only = app_power_screen_off()};
+    const input_event_t input = {.btn = btn, .event = ev, .wake_only = app_power_screen_off(), .confirmation_id = s_visible_confirmation_id};
     (void)xQueueSend(s_input_queue, &input, 0);
+}
+
+static void process_ui_events(lv_timer_t *timer) {
+    (void)timer;
+    portENTER_CRITICAL(&s_event_mux);
+    uint32_t events = ui_event_batch_take(&s_pending_events);
+    portEXIT_CRITICAL(&s_event_mux);
+    if (!events) return;
+    /* The LVGL timer runs under the port lock on its 7 KiB task. Formatting
+     * labels/constructing pages must never run on the small sys_evt stack. */
+    if (events & (UI_EVENT_SCREEN_OFF | UI_EVENT_SCREEN_ON)) {
+        if (app_power_screen_off()) {
+            bsp_display_backlight(0);
+            ui_pet_set_paused(true);
+        } else {
+            go_home();
+            ui_theme_brightness_apply(app_runtime()->settings.brightness);
+        }
+    }
+    if ((events & UI_EVENT_VICTORY) && !app_runtime()->focus.running) {
+        // Ignore a delayed finish event after a new timer has been confirmed.
+        if (app_runtime()->mic_requested) s_deferred_victory = true;
+        else {
+            ESP_LOGI(TAG, "胜利事件: 返回主屏+动画+音效");
+            app_power_wake_screen();
+            go_home(); // settings destroy restores an interrupted live adjustment
+            ui_pet_set_paused(false);
+            ui_pet_on_victory();
+            ui_pet_refresh();
+            app_audio_fx_play(APP_FX_VICTORY);
+        }
+    }
+    if (events & UI_EVENT_REFRESH) {
+        refresh_current();
+        if (s_deferred_victory && !app_runtime()->mic_requested) {
+            s_deferred_victory = false;
+            if (!app_runtime()->focus.running) {
+                go_home(); ui_pet_on_victory(); app_audio_fx_play(APP_FX_VICTORY);
+            }
+        }
+    }
 }
 
 static void on_app_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
     (void)arg; (void)base; (void)data;
-    if (!bsp_lvgl_lock(500)) return;
+    uint32_t event;
     switch ((app_event_id_t)id) {
-    case APP_EVENT_FOCUS_VICTORY:
-        // Ignore a delayed finish event after a new timer has been confirmed.
-        if (app_runtime()->focus.running) break;
-        ESP_LOGI(TAG, "胜利事件: 返回主屏+动画+音效");
-        app_power_wake_screen();
-        go_home(); // settings destroy restores an interrupted live adjustment
-        ui_pet_set_paused(false);
-        ui_pet_on_victory();
-        ui_pet_refresh();
-        app_audio_fx_play(APP_FX_VICTORY);
-        break;
-    case APP_EVENT_SCREEN_OFF:
-        bsp_display_backlight(0);
-        ui_pet_set_paused(true);
-        break;
-    case APP_EVENT_SCREEN_ON:
-        go_home();
-        ui_theme_brightness_apply(app_runtime()->settings.brightness);
-        break;
+    case APP_EVENT_FOCUS_VICTORY: event = UI_EVENT_VICTORY; break;
+    case APP_EVENT_SCREEN_OFF: event = UI_EVENT_SCREEN_OFF; break;
+    case APP_EVENT_SCREEN_ON: event = UI_EVENT_SCREEN_ON; break;
     case APP_EVENT_SNAPSHOT_UPDATED:
     case APP_EVENT_WIFI_STATE:
     case APP_EVENT_FOCUS_CHANGED:
     case APP_EVENT_XP_CHANGED:
     case APP_EVENT_SYNC_STATE:
-        refresh_current();
-        break;
-    default: break;
+    case APP_EVENT_BLE_STATE: event = UI_EVENT_REFRESH; break;
+    default: return;
     }
-    bsp_lvgl_unlock();
+    portENTER_CRITICAL(&s_event_mux);
+    ui_event_batch_post(&s_pending_events, event);
+    portEXIT_CRITICAL(&s_event_mux);
 }
 
 static void second_tick(lv_timer_t *timer) {
@@ -171,12 +228,16 @@ void ui_shell_init(void) {
     app_home_reset(&s_home);
     s_page = PAGE_HOME;
     set_page(PAGE_HOME); // Cold boot and deep-sleep wake always land here.
+    lv_timer_create(process_ui_events, 50, NULL);
     lv_timer_create(second_tick, 1000, NULL);
     bsp_lvgl_unlock();
     ESP_ERROR_CHECK(esp_event_handler_instance_register(APP_EVENT, ESP_EVENT_ANY_ID, on_app_event, NULL, NULL));
     s_input_queue = xQueueCreate(8, sizeof(input_event_t));
     TaskHandle_t task = NULL;
-    if (s_input_queue && xTaskCreate(input_task, "shell_input", 4096, NULL, 5, &task) == pdPASS) {
+    // Measured on 0.1.2: Settings navigation left only 460 / 4096 bytes.
+    // Add 1 KiB for this demonstrated menu/formatting path; other stacks and
+    // the sys_evt-to-LVGL separation remain unchanged.
+    if (s_input_queue && xTaskCreate(input_task, "shell_input", 5120, NULL, 5, &task) == pdPASS) {
         app_debug_register("shell_input", task);
         esp_err_t err = bsp_button_init(on_key, NULL);
         if (err != ESP_OK) ESP_LOGE(TAG, "按键初始化失败: %s", esp_err_to_name(err));

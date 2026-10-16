@@ -2,6 +2,8 @@
 
 # 0004 — Asset path: the device only downloads; PNG transcoding happens in the config portal
 
+Status updated 2026-10-14: **partially superseded** by [ADR 0006](0006-ble-companion-without-device-networking.md). Host transcoding, APB1 validation, bounded writes, and atomic installation remain accepted. Hourly HTTP(S) delivery is replaced by a later BLE asset capability; the first BLE MVP retains current assets. The original reasoning below is preserved as history. Its HTTPS wording was a target, not proof of TLS in the current plain-HTTP firmware.
+
 Pet/map/decoration art must be user-replaceable. Decision on the pipeline:
 the user uploads PNGs in the config portal (web) → the **server** transcodes
 them to the device-native format (RGB565 raw frames — 64×64 characters,

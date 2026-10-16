@@ -5,6 +5,7 @@ import cookie from "@fastify/cookie";
 import formbody from "@fastify/formbody";
 import multipart from "@fastify/multipart";
 import { registerDeviceApi } from "./deviceApi.js";
+import { registerCompanionApi } from "./companionApi.js";
 import { registerPortal } from "./portal/routes.js";
 import { layout } from "./portal/html.js";
 import type { SettingsStore } from "./store/settings.js";
@@ -22,6 +23,7 @@ export interface AppDeps {
   publisher: AssetPublisher;
   draft: DraftStore;
   collectors: Collector[];
+  companionHostId?: string;
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -73,6 +75,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     snapshots: deps.snapshots,
     publisher: deps.publisher,
   });
+  if (deps.companionHostId) registerCompanionApi(app, deps, deps.companionHostId);
 
   registerPortal(app, {
     auth: deps.auth,

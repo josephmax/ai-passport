@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lvgl.h"
+#include "bsp_display.h"
 
 static const char *TAG = "dbg";
 
@@ -67,8 +68,8 @@ void app_debug_boot_report(void) {
 }
 
 bool app_debug_heartbeat(void) {
-    lv_mem_monitor_t mon;
-    lv_mem_monitor(&mon);
+    lv_mem_monitor_t mon = {0};
+    if (bsp_lvgl_lock(100)) { lv_mem_monitor(&mon); bsp_lvgl_unlock(); }
     ESP_LOGI(TAG, "心跳 运行=%us 堆=%u LVGL池空闲=%u(最大块%u,用量%d%%,碎片%d%%)",
              (unsigned)s_run_seconds,
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_DEFAULT),
@@ -76,11 +77,15 @@ bool app_debug_heartbeat(void) {
              (unsigned)mon.free_biggest_size,
              mon.used_pct,
              mon.frag_pct);
+    ESP_LOGI(TAG, "Internal heap minimum=%u largest=%u",
+             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     for (int i = 0; i < s_task_count; i++) {
         if (!s_tasks[i].handle) continue;
-        UBaseType_t free_words = uxTaskGetStackHighWaterMark(s_tasks[i].handle);
-        ESP_LOGI(TAG, "  栈[%s] 剩余=%u 字", s_tasks[i].name,
-                 (unsigned)(free_words * sizeof(StackType_t)));
+        // ESP-IDF returns bytes, unlike upstream FreeRTOS word units.
+        UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(s_tasks[i].handle);
+        ESP_LOGI(TAG, "  Stack[%s] minimum free=%u bytes", s_tasks[i].name,
+                 (unsigned)free_bytes);
     }
     s_run_seconds += 10;
     return true;

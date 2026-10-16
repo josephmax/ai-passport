@@ -20,6 +20,9 @@ export interface DeviceRecord {
   status: "active" | "revoked";
   pairedAt: string; // RFC3339
   lastSyncAt: string | null;
+  hardwareId?: string;
+  hostId?: string;
+  transport?: "ble";
 }
 
 interface DevicesFile {
@@ -123,6 +126,24 @@ export class DeviceRegistry {
     return [...this.devices];
   }
 
+  /** Called only by the loopback companion after device-side confirmation.
+   * The composite identity is stable across reconnects and distinct per host. */
+  async registerBle(hardwareId: string, hostId: string, now: Date): Promise<DeviceRecord | null> {
+    const existing = this.devices.find(d => d.transport === "ble" && d.hardwareId === hardwareId && d.hostId === hostId);
+    if (existing) {
+      if (existing.status !== "active") return null;
+      existing.lastSyncAt = now.toISOString();
+      await this.save();
+      return existing;
+    }
+    const record: DeviceRecord = { id: randomBytes(8).toString("hex"), name: `Passport ${hardwareId}`,
+      token: randomBytes(16).toString("hex"), status: "active", pairedAt: now.toISOString(),
+      lastSyncAt: now.toISOString(), hardwareId, hostId, transport: "ble" };
+    this.devices.push(record);
+    await this.save();
+    return record;
+  }
+
   /** Authenticate by token; returns the device if active. */
   authenticate(token: string | undefined | null): DeviceRecord | null {
     if (!token) return null;
@@ -145,5 +166,14 @@ export class DeviceRegistry {
     dev.status = "revoked";
     await this.save();
     return true;
+  }
+
+  async allowBlePairing(deviceId: string): Promise<boolean> {
+    const dev = this.devices.find(d => d.id === deviceId && d.transport === "ble");
+    if (!dev) return false;
+    dev.status = "active";
+    dev.token = randomBytes(16).toString("hex");
+    await this.save();
+    return true; // Does not restore a firmware binding; physical pairing is still required.
   }
 }

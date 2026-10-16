@@ -31,8 +31,8 @@ CONFIG_LV_FONT_MONTSERRAT_32=y
 # 设置页二维码(连接手机)。
 CONFIG_LV_USE_QRCODE=y
 # LVGL 内置独立静态池:主屏常驻,只保留一个二级页。使用当前版本的字节配置项;
-# 旧 KILOBYTES 配置已被 LV_MEM_SIZE 默认的 64KB 覆盖,此处保留实际生效容量。
-CONFIG_LV_MEM_SIZE=65536
+# 原 64 KiB 静态池挤占 BLE 的内部堆；页面按需销毁，48 KiB 留有渲染余量。
+CONFIG_LV_MEM_SIZE=49152
 
 # --- 系统 ---
 CONFIG_FREERTOS_HZ=1000
@@ -43,8 +43,25 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # 堆投毒:缓冲区越界写会在下一次堆操作处立刻 abort 并带上调用者信息。
 CONFIG_HEAP_POISONING_COMPREHENSIVE=y
 # 栈用量编译器检查:函数栈帧超限在编译期/运行期暴露。
-CONFIG_COMPILER_STACK_CHECK_MODE=all
+CONFIG_COMPILER_STACK_CHECK_MODE_ALL=y
 
 # --- Bluetooth ---
-# 多合一挂坠不使用 BLE(配网走 SoftAP,规格 §2/ADR-0001),关闭以释放 ~60KB RAM。
-CONFIG_BT_ENABLED=n
+# BLE-only companion; Secure Connections with numeric comparison and bonds.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=n
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+# C3 controller activities include advertising and connections. Reserve both,
+# rather than the six-instance default (each unused instance costs 828 bytes).
+CONFIG_BT_CTRL_BLE_MAX_ACT=2
+# Snapshots use acknowledged, explicitly framed chunks, never ATT long writes.
+CONFIG_BT_NIMBLE_ATT_MAX_PREP_ENTRIES=0
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+CONFIG_BT_NIMBLE_MAX_BONDS=4
+CONFIG_BT_NIMBLE_SM_LEGACY=n
+CONFIG_BT_NIMBLE_SM_SC=y
+CONFIG_BT_NIMBLE_SM_SC_ONLY=1
+CONFIG_BT_NIMBLE_SM_LVL=4
+CONFIG_BT_NIMBLE_HANDLE_REPEAT_PAIRING_DELETION=n
+CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=247

@@ -4,9 +4,14 @@
 
 - Date: 2026-09-24
 - Status: visual design accepted and implemented; device acceptance pending
+- 2026-10-14 amendment: [BLE companion MVP](2026-10-14-ble-companion-mvp.md) replaces this document's Wi-Fi icon and Wi-Fi/phone setup rows. Home navigation/layout and focus semantics remain accepted. The new connection/microphone UI is implemented as of 2026-10-15; all later build/device checkpoints below describe their historical firmware.
 - Audience: UI designer (function points and interaction constraints) / firmware engineering (implementation basis)
 - Glossary: see [`docs/CONTEXT.md`](../CONTEXT.md)
 - Supersedes: [Multi-Pendant specification](./2026-09-22-multi-pendant-app.md) §3 (pages and navigation) and §7.1 (settings interaction model); the remaining sections of that specification stay in force, and this document wins on conflict
+
+## 0. Connection and microphone UI (implemented 2026-10-15; hardware acceptance pending)
+
+Keep the single Home and existing badge/focus/settings cursor targets. Replace the Wi-Fi indicator with computer/BLE connection state while retaining separate snapshot-age and battery readings. In Settings replace Wi-Fi/Connect phone with Connect computer and Forget computer; add Microphone and keep Sync now. Pairing is a device-confirmed BLE flow, not a QR/SSID/password/service-IP form. The microphone gets an explicit screen with ready/streaming/error/level, OK start/stop, and long OK bounded stop/return. Recheck row sizing and glyphs rather than reusing the old seven-row assumption. During capture keep focus/XP running, freeze pet animation, and defer victory audio/navigation and snapshot persistence until stop. The [BLE specification](2026-10-14-ble-companion-mvp.md) owns lifecycle and acceptance. The former icon/rows and phone flows below remain implementation history, not the next target.
 
 ## 1. Background and goal
 

@@ -4,6 +4,10 @@
 
 # AI Passport 本地服务
 
+需要单个桌面应用时，运行 `./tools/package-companion.sh` 构建，再双击 `build/desktop/Passport Companion.app`。包内含服务与 Node 运行时，由应用管理启停，私有用户数据保存在包外。详见[桌面打包与数据边界](../docs/specs/2026-10-14-ble-companion-mvp.zh_CN.md#5-构建与运行)；开发服务的数据不会自动迁移。
+
+实现更新（2026-10-15）：[BLE 伴侣 MVP](../docs/specs/2026-10-14-ble-companion-mvp.zh_CN.md) 已包括固件、原生 macOS 伴侣及仅回环可用的 `/api/companion` 接口。在挂坠打开 Bluetooth 后，从仓库根目录运行 `./tools/run-companion.sh --device MAC`。配对与来源接管必须由设备明确确认；注册表区分 `(电脑 UUID, 出厂 MAC)`。BlackHole／Typeless 安装与实机听写验收尚待完成。下方 LAN 接口保留用于兼容，当前挂坠固件使用 BLE。推翻记录见 [ADR 0006](../docs/adr/0006-ble-companion-without-device-networking.zh_CN.md) 和 [ADR 0007](../docs/adr/0007-microphone-bridge-reuses-desktop-dictation.zh_CN.md)。
+
 用量来源边界及下一步采集架构见[用量采集方案](../docs/development/engineering/usage-collection.zh_CN.md)
 和 [ADR 0005](../docs/adr/0005-separate-usage-quota-and-billing.zh_CN.md)。
 
@@ -11,7 +15,7 @@
 [`docs/specs/2026-09-22-multi-pendant-app.md`](../docs/specs/2026-09-22-multi-pendant-app.md) 与
 [`docs/specs/2026-09-22-config-portal.md`](../docs/specs/2026-09-22-config-portal.md)）：
 采集各家 Coding 账户用量、聚合成设备用量快照、把宠物素材 PNG 转码为 RGB565 皮肤包、
-转发天气、托管手机配置中心。设备只与本地服务通信（ADR-0001）；PNG→RGB565 转码在
+转发天气、托管手机配置中心。伴侣通过 BLE 下发限定来源的快照；PNG→RGB565 转码在
 服务端完成（ADR-0004）。
 
 - 运行环境：Node.js ≥ 22，TypeScript（strict），单进程 Fastify + sharp。
@@ -132,7 +136,11 @@ null——设备只渲染）、`kind`（归一化后的天气）、降级口径�
 - 本地 Agent 采集器调用固定版本 ccusage 的离线 JSON 报告，从本地周一零点
   到今天累加每日记录。它在**服务主机**检测 Claude Code、Codex、OpenCode、
   Gemini CLI 等受支持来源；日志与 API Key 不上传。这些 Token 计数不代表
-  官方订阅额度或使用百分比。
+  官方订阅额度或使用百分比。每日记录只计入按服务主机本地日期归属的新增用量事件；
+  较早创建的会话若当天继续活动，其新消耗仍计入当天，仅发现或打开旧会话不会把历史
+  Token 搬到当天。Codex 按每个会话的累计用量增量计数，未变化的重复
+  `token_count` 样本增加零。它覆盖所有可发现的本机会话，因此可能高于只记录
+  自身活跃会话的伴随应用。总 Token 包含缓存读取，并非仅未缓存输入。
 - 接入本地采集器时，`dailyTokens.used` 为观测到的本地 Agent 总量，`coverage` 为 `local-agent-logs`。`agents` 最多保留八个来源的今日／本周 Token 分项（含缓存读取）；5 小时／周额度另行采样，无可靠读数时为 null。仅提供余额的账户不使总量失效，也不重复叠加供应商计数；本地采集失败时保持 null。除默认每 10 分钟的周期采集外，服务在主机本地零点固定刷新；新读数完成前今日用量为 null，周一换周时也屏蔽上周本地 Token。Codex 来源使用 `codex` 标识，旧设置中的 `chatgpt` 主力项在加载时迁移。名牌字段来自鉴权的名牌页；设备将其保存到独立 NVS 键，仅内容变化时重写。
   设备离线时沿用上次快照。
 

@@ -1,15 +1,14 @@
 #include "ui_settings.h"
 #include "app_audio_fx.h"
-#include "app_prov.h"
+#include "app_ble.h"
 #include "app_runtime.h"
-#include "app_sync.h"
 #include "ui_theme.h"
 #include <stdio.h>
 #include <string.h>
 
-typedef enum { BRIGHTNESS, WIFI, SCREEN_OFF, REST, CONNECT, VOLUME, SYNC, ITEM_COUNT } item_t;
-typedef enum { LIST, ADJUST, REST_EDIT, CONNECT_FLOW, PROV_FLOW } settings_mode_t;
-static const char *NAMES[] = {"亮度", "Wi-Fi", "自动息屏", "作息时间", "连接手机", "音量", "立即同步"};
+typedef enum { BRIGHTNESS, MIC, SCREEN_OFF, REST, CONNECT, VOLUME, SYNC, FORGET_MAC, ITEM_COUNT } item_t;
+typedef enum { LIST, ADJUST, REST_EDIT, CONNECT_FLOW, MIC_FLOW } settings_mode_t;
+static const char *NAMES[] = {"亮度", "Microphone", "自动息屏", "作息时间", "Bluetooth", "音量", "立即同步", "Forget Mac"};
 static const uint16_t OFF_STEPS[] = {15, 30, 60, 120};
 static ui_settings_t *s_settings;
 static ui_status_bar_t s_status;
@@ -35,11 +34,11 @@ static void schedule_save(void) {
 }
 
 static void cancel_edit(void) {
+    if (s_mode == MIC_FLOW) app_audio_microphone(false);
     if (s_mode == ADJUST) {
         app_runtime()->settings = s_entry;
         ui_theme_brightness_apply(s_entry.brightness);
     }
-    if (s_mode == PROV_FLOW) s_work.cancel_provisioning = true;
 }
 
 ui_settings_work_t ui_settings_take_work(void) {
@@ -59,10 +58,10 @@ static void value_text(item_t item, char *buf, size_t cap) {
         break;
     case REST: snprintf(buf, cap, "%02u:%02u-%02u:%02u", rt->settings.rest_start_min / 60,
         rt->settings.rest_start_min % 60, rt->settings.rest_end_min / 60, rt->settings.rest_end_min % 60); break;
-    case WIFI: snprintf(buf, cap, "%s", rt->wifi_connected ? "已连接" : "配网"); break;
-    case CONNECT: snprintf(buf, cap, "%s", rt->paired ? "已配对" : "未配对"); break;
+    case MIC: snprintf(buf, cap, "%s", rt->mic_requested ? "Stop" : "Start"); break;
+    case CONNECT: snprintf(buf, cap, "%s", app_ble_status().ready ? "Connected" : "Pair / switch"); break;
     case SYNC:
-        snprintf(buf, cap, "%s", !rt->paired ? "未配对" : !rt->wifi_connected ? "未连接" :
+        snprintf(buf, cap, "%s", !rt->paired ? "未配对" : !app_ble_status().ready ? "未连接" :
                  rt->sync_in_progress ? "同步中" : s_sync_requested ?
                  (rt->sync_result_valid ? (rt->sync_last_ok ? "已同步" : "同步失败") : "请求中") : "执行");
         break;
@@ -97,19 +96,16 @@ void ui_settings_refresh(void) {
             ui_theme_select(s_rest_rows[i], i == s_rest_pick);
         }
         ui_theme_hint_set(s_hint, "调整", s_rest_pick ? "保存" : "下一项", "取消");
-    } else if (s_mode == PROV_FLOW) {
-        const char *state = "正在启动热点";
-        switch (app_prov_state()) {
-        case APP_PROV_AP_UP: state = "手机连接热点后完成配网"; break;
-        case APP_PROV_CONNECTING: state = "正在连接 Wi-Fi"; break;
-        case APP_PROV_PAIRING: state = "正在配对"; break;
-        case APP_PROV_DONE: state = "配网完成"; break;
-        case APP_PROV_FAILED: state = "失败 · OK 重试"; break;
-        default: break;
-        }
-        lv_label_set_text(s_flow_text, state);
-        const char *ap = app_prov_ap_name();
-        lv_label_set_text(s_value, ap ? ap : "--");
+    } else if (s_mode == MIC_FLOW) {
+        lv_label_set_text(s_flow_text, rt->mic_error[0] ? rt->mic_error : rt->mic_active ? "Streaming to Mac" : "Select microphone, then OK");
+        if (rt->mic_active) lv_label_set_text_fmt(s_value, "Recording %u%%", rt->mic_level);
+        else lv_label_set_text(s_value, rt->mic_requested ? "Starting" : "Stopped");
+    } else if (s_mode == CONNECT_FLOW) {
+        app_ble_status_t ble = app_ble_status();
+        lv_label_set_text(s_value, ble.device_id);
+        if (ble.ready) lv_label_set_text_fmt(s_flow_text, "%s\nOK: switch computer", ble.host_name);
+        else lv_label_set_text(s_flow_text, ble.error[0] ? ble.error :
+            ble.pairing_open ? "Pairing open for 60s\nRun Passport Companion on Mac" : "OK: allow pairing for 60s");
     }
 }
 
@@ -120,7 +116,7 @@ static void show(settings_mode_t mode) {
     s_title = ui_theme_label(s_content, 12, 6, 216, &app_font_24, UI_INK, mode == LIST ? "设置" : NAMES[s_selected]);
     if (mode == LIST) {
         for (int i = 0; i < ITEM_COUNT; i++) {
-            s_rows[i] = ui_theme_card(s_content, 8, 36 + i * 33, 224, 32, false);
+            s_rows[i] = ui_theme_card(s_content, 8, 36 + i * 29, 224, 28, false);
             ui_theme_label(s_rows[i], 10, 10, 90, &app_font_12, UI_INK, NAMES[i]);
             s_values[i] = ui_theme_label(s_rows[i], 102, 10, 112, &app_font_12, UI_INK_DIM, "");
             lv_obj_set_style_text_align(s_values[i], LV_TEXT_ALIGN_RIGHT, 0);
@@ -143,27 +139,14 @@ static void show(settings_mode_t mode) {
         }
         ui_theme_label(s_content, 12, 226, 216, &app_font_12, UI_INK_DIM, "每次调整 30 分钟");
     } else if (mode == CONNECT_FLOW) {
-        app_runtime_t *rt = app_runtime();
-#if LV_USE_QRCODE
-        if (rt->service_url[0]) {
-            lv_obj_t *qr = lv_qrcode_create(s_content);
-            lv_qrcode_set_size(qr, 96);
-            lv_qrcode_set_dark_color(qr, lv_color_hex(UI_BG));
-            lv_qrcode_set_light_color(qr, lv_color_hex(0xFFFFFF));
-            lv_obj_set_pos(qr, 72, 54);
-            lv_qrcode_update(qr, rt->service_url, strlen(rt->service_url));
-        }
-#endif
-        lv_obj_t *url = ui_theme_label(s_content, 12, 168, 216, &app_font_12, UI_INK,
-            rt->service_url[0] ? rt->service_url : "未配置服务地址");
-        lv_label_set_long_mode(url, LV_LABEL_LONG_WRAP);
-        lv_obj_set_height(url, 42);
-        ui_theme_label(s_content, 12, 222, 216, &app_font_12, UI_INK_DIM, rt->paired ? "令牌正常" : "未配对");
-        ui_theme_hint_set(s_hint, NULL, NULL, "返回");
+        s_value = ui_theme_label(s_content, 12, 80, 216, &lv_font_montserrat_14, UI_ACCENT, "");
+        s_flow_text = ui_theme_label(s_content, 12, 125, 216, &lv_font_montserrat_14, UI_INK, "");
+        lv_label_set_long_mode(s_flow_text, LV_LABEL_LONG_WRAP);
+        ui_theme_hint_set(s_hint, NULL, "确认", "返回");
     } else {
         s_value = ui_theme_label(s_content, 12, 94, 216, &app_font_12, UI_ACCENT, "--");
         s_flow_text = ui_theme_label(s_content, 12, 146, 216, &app_font_12, UI_INK_DIM, "");
-        ui_theme_hint_set(s_hint, NULL, "重试", "返回");
+        ui_theme_hint_set(s_hint, NULL, "确认", "返回");
     }
     ui_settings_refresh();
 }
@@ -179,15 +162,16 @@ bool ui_settings_key(bool ok_short, bool ok_long, bool up, bool down) {
             s_entry = rt->settings;
             if (s_selected == BRIGHTNESS || s_selected == VOLUME || s_selected == SCREEN_OFF) show(ADJUST);
             else if (s_selected == REST) { s_draft = s_entry; s_rest_pick = 0; show(REST_EDIT); }
-            else if (s_selected == WIFI) { app_prov_request_start(); show(PROV_FLOW); }
-            else if (s_selected == CONNECT) show(CONNECT_FLOW);
+            else if (s_selected == MIC) { app_audio_microphone(!rt->mic_requested); show(MIC_FLOW); }
+            else if (s_selected == CONNECT) { if (!app_ble_status().ready) app_ble_open_pairing(); show(CONNECT_FLOW); }
+            else if (s_selected == FORGET_MAC) app_ble_forget();
             else if (s_selected == SYNC) {
-                if (!rt->paired) ui_theme_hint_set(s_hint, NULL, "先连接手机", "返回");
-                else if (!rt->wifi_connected) ui_theme_hint_set(s_hint, NULL, "先配网", "返回");
+                if (!rt->paired) ui_theme_hint_set(s_hint, NULL, "未连接", "返回");
+                else if (!app_ble_status().ready) ui_theme_hint_set(s_hint, NULL, "未连接", "返回");
                 else {
                     rt->sync_result_valid = false;
                     s_sync_requested = true;
-                    app_sync_request_now();
+                    app_ble_request_sync();
                     ui_theme_hint_set(s_hint, NULL, "同步中", "返回");
                 }
                 ui_settings_refresh();
@@ -218,7 +202,8 @@ bool ui_settings_key(bool ok_short, bool ok_long, bool up, bool down) {
             else { rt->settings = s_draft; schedule_save(); show(LIST); }
         }
         ui_settings_refresh();
-    } else if (s_mode == PROV_FLOW && ok_short && app_prov_state() == APP_PROV_FAILED) app_prov_request_start();
+    } else if (s_mode == MIC_FLOW && ok_short) { app_audio_microphone(!rt->mic_requested); ui_settings_refresh(); }
+    else if (s_mode == CONNECT_FLOW && ok_short) { app_ble_open_pairing(); ui_settings_refresh(); }
     return true;
 }
 

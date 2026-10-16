@@ -12,7 +12,7 @@
     "start": "node dist/index.js",
     "start:local": "npm run build && node tools/start-local.mjs",
     "dev": "tsx watch src/index.ts",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "node --import tsx --test test/*.test.ts test/*.test.mjs",
     "gen:placeholder": "tsx tools/gen-placeholder-bundle.ts",
     "smoke": "bash tools/smoke.sh"
   },

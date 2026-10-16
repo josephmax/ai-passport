@@ -15,8 +15,10 @@ import dotenv from "dotenv";
 import { mkdir } from "node:fs/promises";
 
 const serviceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-dotenv.config({ path: path.join(serviceRoot, ".env") });
-dotenv.config(); // also honor cwd .env if present
+if (process.env.PASSPORT_COMPANION_MANAGED !== "1") {
+  dotenv.config({ path: path.join(serviceRoot, ".env") });
+  dotenv.config(); // also honor cwd .env if present
+}
 
 import { buildApp } from "./app.js";
 import { SettingsStore } from "./store/settings.js";
@@ -29,6 +31,7 @@ import { GlmCollector } from "./collectors/glm.js";
 import { DeepSeekCollector } from "./collectors/deepseek.js";
 import { AssetPublisher } from "./assets/publisher.js";
 import { DraftStore } from "./assets/draftStore.js";
+import { companionIdentity } from "./companionApi.js";
 
 async function main(): Promise<void> {
   const dataDir = process.env.DATA_DIR
@@ -85,6 +88,7 @@ async function main(): Promise<void> {
   });
 
   const app = await buildApp({
+    companionHostId: companionIdentity(dataDir),
     auth: { password: portalPassword, secret: sessionSecret },
     settings,
     devices,
@@ -100,6 +104,11 @@ async function main(): Promise<void> {
   snapshots.start();
 
   await app.listen({ port, host });
+  if (process.env.PASSPORT_COMPANION_MANAGED === "1") {
+    const address = app.server.address();
+    if (!address || typeof address === "string" || host !== "127.0.0.1") throw new Error("Invalid managed service address");
+    console.log(`[companion-ready] ${JSON.stringify({ port: address.port })}`);
+  }
   console.log(`[service] listening on http://${host}:${port}`);
   console.log(`[service] data dir: ${dataDir}`);
   console.log(`[service] asset bundle version: v${publisher.currentVersion()}`);

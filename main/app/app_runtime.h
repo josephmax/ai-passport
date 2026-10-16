@@ -27,6 +27,7 @@ typedef enum {
     APP_EVENT_SCREEN_OFF,             // 电源管理要求熄屏
     APP_EVENT_SCREEN_ON,              // 唤醒
     APP_EVENT_SYNC_STATE,             // 同步进行中/结束(暂停帧动画加载)
+    APP_EVENT_BLE_STATE,
 } app_event_id_t;
 
 typedef struct {
@@ -34,6 +35,10 @@ typedef struct {
     bool snap_valid;
     int64_t snap_received_at_ms;      // 本机收到快照的时刻(离线标注的参照)
     bool wifi_connected;
+    bool mic_active;
+    bool mic_requested;
+    char mic_error[64];
+    uint8_t mic_level;
     bool paired;                      // 有令牌即视为已配对
     char service_url[96];
     bool sync_in_progress;
@@ -61,7 +66,6 @@ void app_runtime_publish(app_event_id_t id);   // 持有者写完状态后广播
 // 快照不内嵌在 runtime 里直读直写:整结构体约 3.4KB,LVGL 任务(7KB 栈)
 // 放不下安全整拷,免锁直读又会撕裂 64 位/double 字段。改为双缓冲:
 // 写方整份拷入非活动缓冲后翻转活动指针;读方取活动指针。
-// 读方在一次刷新调用内持有指针是安全的:该缓冲要到"再下一次"更新才会
-// 被回收,而两次更新至少隔一次完整 HTTP 同步,渲染只需毫秒级。
+// BLE 写方和 UI 读方持有同一 bsp_lvgl_lock，防止密集快照覆盖读方缓冲。
 void app_runtime_set_snapshot(const app_snapshot_t *snap);
 const app_snapshot_t *app_runtime_snap(void);

@@ -2,6 +2,8 @@
 
 # 0001 — The local service holds all account credentials; the device holds none and pulls hourly
 
+Status updated 2026-10-14: **partially superseded** by [ADR 0006](0006-ble-companion-without-device-networking.md). Host-only provider credentials remain accepted; Wi-Fi/HTTP hourly pull and rejection of a BLE computer companion are replaced. [ADR 0005](0005-separate-usage-quota-and-billing.md) already refines the reading semantics. The original decision below is preserved as history, not the next MVP's transport contract.
+
 The device is a losable wearable, and consumer subscription quotas (Claude
 weekly/5-hour limits, etc.) have no official device-facing query API; the
 phone config portal also needs to manage several Coding accounts. Decision:

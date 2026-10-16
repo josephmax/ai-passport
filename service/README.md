@@ -4,6 +4,10 @@
 
 # AI Passport Local Service
 
+For a single desktop app, build with `./tools/package-companion.sh` and double-click `build/desktop/Passport Companion.app`. It includes the service and Node runtime, manages their lifecycle and keeps private user data outside the bundle. See [desktop packaging and state boundaries](../docs/specs/2026-10-14-ble-companion-mvp.md#5-build-and-run); development-service data is not automatically migrated.
+
+Implementation update (2026-10-15): the [BLE companion MVP](../docs/specs/2026-10-14-ble-companion-mvp.md) now includes firmware, a native macOS helper and loopback-only `/api/companion` adapters. Use `./tools/run-companion.sh --device MAC` from the repository root after opening Bluetooth on the pendant. Pairing and source takeover require explicit device confirmation; the registry separates `(host UUID, factory MAC)`. BlackHole/Typeless installation and hardware dictation acceptance remain pending. The LAN routes below are retained for compatibility; current pendant firmware uses BLE. [ADR 0006](../docs/adr/0006-ble-companion-without-device-networking.md) and [ADR 0007](../docs/adr/0007-microphone-bridge-reuses-desktop-dictation.md) record the reversals.
+
 Usage source boundaries and the next collection architecture are documented in
 [the usage collection plan](../docs/development/engineering/usage-collection.md)
 and [ADR 0005](../docs/adr/0005-separate-usage-quota-and-billing.md).
@@ -13,7 +17,7 @@ Self-hosted backend for the AI Passport multi-pendant (see
 [`docs/specs/2026-09-22-config-portal.md`](../docs/specs/2026-09-22-config-portal.md)):
 collects Coding-account usage, aggregates the device usage snapshot, transcodes
 pet skin PNGs to RGB565 asset bundles, forwards weather, and hosts the mobile
-config portal. The device talks only to this service (ADR-0001); PNG→RGB565
+config portal. The companion delivers its scoped snapshots over BLE; PNG→RGB565
 transcoding happens server-side (ADR-0004).
 
 - Runtime: Node.js ≥ 22, TypeScript (strict), single-process Fastify + sharp.
@@ -147,7 +151,14 @@ without a cap — devices only render), `kind` (normalized weather), and quota
   sums its daily rows from Monday 00:00 through today. It detects Claude Code,
   Codex, OpenCode, Gemini CLI and other supported local sources on the **service
   host**. No logs or API keys leave that host. Agent token counts do not measure
-  official subscription allowance or usage percentage.
+  official subscription allowance or usage percentage. A daily row counts new
+  usage events dated to that host-local calendar day, including activity in a
+  session started on an earlier day; merely discovering or opening an old
+  session does not add its past tokens. For Codex, cumulative usage increases
+  are counted once per rollout and repeated unchanged `token_count` samples
+  add zero. This covers all detectable local sessions, so it can exceed a
+  companion app that recorded only its own active session. Cache-read input is
+  included in the token total; this is not a count of uncached input only.
 - With the local collector, `dailyTokens.used` is the observed local Agent
   total and `coverage` is `local-agent-logs`. Finance-only accounts do not
   erase that total, and provider counts are not added again. A failed local

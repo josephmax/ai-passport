@@ -349,17 +349,17 @@ ${snapshot?.accounts.filter(a => a.balance).map(a => `<div class="card"><h2>${es
     const devices = deps.devices.list();
     const active = deps.devices.activePairingCode(new Date());
     const rows = devices.length === 0
-      ? '<tr><td class="muted">暂无设备。生成配对码后，在设备 SoftAP 配网页填入服务地址与配对码。</td></tr>'
+      ? '<tr><td class="muted">暂无设备。在挂坠设置打开 Bluetooth，用电脑伴侣选择完整 MAC，并在设备确认配对及数据来源。</td></tr>'
       : devices
           .map(
             (d) => `<tr>
-<td><b>${esc(d.name)}</b><br><span class="muted mono">${esc(d.id)}</span></td>
-<td><span class="badge ${d.status === "active" ? "ok" : "off"}">${d.status === "active" ? "令牌有效" : "已吊销"}</span></td>
+<td><b>${esc(d.name)}</b><br><span class="muted mono">${esc(d.hardwareId ?? d.id)}</span>${d.hostId ? `<br><span class="muted mono">Host ${esc(d.hostId)}</span>` : ""}</td>
+<td><span class="badge ${d.status === "active" ? "ok" : "off"}">${d.status === "active" ? d.transport === "ble" ? "BLE 已允许" : "令牌有效" : "已吊销"}</span></td>
 <td>${esc(fmtTime(d.lastSyncAt))}</td>
 <td>${
   d.status === "active"
     ? `<form class="inline" method="post" action="/portal/devices/revoke"><input type="hidden" name="deviceId" value="${esc(d.id)}"><button class="red small" type="submit">吊销</button></form>`
-    : ""
+    : d.transport === "ble" ? `<form class="inline" method="post" action="/portal/devices/allow-ble"><input type="hidden" name="deviceId" value="${esc(d.id)}"><button class="small" type="submit">允许重新配对</button></form>` : ""
 }</td>
 </tr>`,
           )
@@ -370,15 +370,18 @@ ${snapshot?.accounts.filter(a => a.balance).map(a => `<div class="card"><h2>${es
       : '<div class="hint" style="text-align:center;padding:10px 0">当前无有效配对码</div>';
     const body = `
 <div class="card">
-  <h2>配对码</h2>
+  <h2>BLE 设备连接</h2>
+  <p>当前固件不配 Wi-Fi。电脑伴侣按完整 MAC 选择挂坠，首次绑定和切换来源都需设备确认，不跨电脑合并数据。吊销由伴侣在下次授权检查时停止同步／麦克风并解除本电脑关联；离线设备需重连后生效。</p>
+  <details><summary>旧 Wi-Fi 固件兼容配对码</summary>
   ${codeBlock}
   <form method="post" action="/portal/devices/pair-code" style="margin-top:8px;text-align:center">
     <button type="submit">${active ? "重新生成" : "生成配对码"}</button>
   </form>
+  </details>
 </div>
 <div class="card">
   <h2>设备列表</h2>
-  <table><tr><th>设备</th><th>令牌</th><th>最后同步</th><th></th></tr>${rows}</table>
+  <table><tr><th>设备／来源</th><th>授权</th><th>最后同步</th><th></th></tr>${rows}</table>
 </div>`;
     return reply.type("text/html").send(
       layout({ title: "设备", activeTab: "devices", flash: flashFromQuery(request.query as Record<string, unknown>), body }),
@@ -394,6 +397,11 @@ ${snapshot?.accounts.filter(a => a.balance).map(a => `<div class="card"><h2>${es
     const body = (request.body ?? {}) as { deviceId?: string };
     const ok = await deps.devices.revoke(body.deviceId ?? "");
     return redirect(reply, "/portal/devices", ok ? "令牌已吊销，设备下次同步将被拒" : "设备不存在", ok ? undefined : "设备不存在");
+  });
+  app.post("/portal/devices/allow-ble", async (request, reply) => {
+    const body = (request.body ?? {}) as { deviceId?: string };
+    const ok = await deps.devices.allowBlePairing(body.deviceId ?? "");
+    return redirect(reply, "/portal/devices", ok ? "已允许重新配对；重启伴侣并在挂坠确认绑定" : "设备不存在");
   });
 
   // ---- assets ------------------------------------------------------------------

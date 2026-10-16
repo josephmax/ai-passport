@@ -3,11 +3,15 @@
 # Badge onboarding and config portal: design and handoff
 
 - Date: 2026-09-24
-- Status: design accepted; badge and existing portal implemented, NFC onboarding pending
+- Status: badge and legacy portal implemented; phone/NFC onboarding superseded, next BLE binding pending
 - Scope: this `feature/multi-pendant-p1` application, not the upstream hardware-test baseline
 - Related: [Home design](2026-09-24-home-panel-redesign.md), [config portal target](2026-09-22-config-portal.md), [service manual](../../service/README.md)
 
 ## Accepted product decision
+
+Updated 2026-10-14: onboard from the **computer companion over BLE**, with a device-side pairing window and authenticated numeric confirmation. The pendant does not join Wi-Fi, start SoftAP, or require a phone to enter an IP/password/code. Daily configuration reuses the host portal on loopback. Replace Wi-Fi/phone setup entries with computer binding/forget and microphone mode; preserve Home badge, focus/XP, installed assets, and truthful sync age. [BLE MVP](2026-10-14-ble-companion-mvp.md) is the next contract; [ADR 0006](../adr/0006-ble-companion-without-device-networking.md) records the reversal. Firmware now uses BLE; the linked MVP records source isolation and remaining hardware acceptance.
+
+### Original phone/NFC decision (superseded; historical)
 
 The NFC tap should lead to **one recognizable entry** with two stages: first connect and pair the device, then manage its badge, accounts, assets, preferences, and devices. The provisioning form is hosted by the device's SoftAP; the daily settings portal is hosted by the local service. They cannot be one always-available HTTP page because the phone changes networks during onboarding. Keep their language and visual hierarchy consistent, and hand off from the provisioning result to the service portal when reachable. A manual path through device Settings and the phone browser must always work.
 
@@ -35,9 +39,11 @@ The mobile design uses a dark header, light content surface, mint accent, short 
 
 The wireframe uses **Joseph / Developer** and **200M today's Tokens** as approved display examples. The 200M figure is illustrative, not measured usage. The earlier firmware preview used that value as a fallback; the current source removes it and shows an unavailable value until a valid reading arrives.
 
-The [interactive visual concept](badge-setup-concept.html) is kept in the repository for review. It predates the final Home tomato layout and contains illustrative states; this document and the current firmware define implementation status.
+The [interactive visual concept](badge-setup-concept.html) is retained as a superseded phone/NFC concept. It predates the final Home tomato layout and BLE decision and contains illustrative states; it is not the next onboarding design.
 
 ## What exists in this checkout
+
+This matrix describes the existing LAN implementation. Historical verification below does not transfer to BLE, the virtual microphone, or the new binding UI.
 
 | Area | Current implementation | Source and verification |
 | --- | --- | --- |
@@ -50,6 +56,10 @@ The [interactive visual concept](badge-setup-concept.html) is kept in the reposi
 The actual portal is functional but visually simpler than the proposed staged mobile concept. It does not yet provide a live device preview. The current SoftAP form is also a minimal separate page; there is no shared mobile shell or automatic handoff to the service portal.
 
 ## Remaining work, in implementation order
+
+Next accepted work is **M0 virtual-microphone/Typeless compatibility → M1 BLE binding/data → M2 microphone → M3 combined acceptance**, in the [BLE MVP](2026-10-14-ble-companion-mvp.md). Reuse badge/config pages, replace provisioning/status semantics, and test migration without resetting local data. NFC/phone onboarding, automatic portal handoff, and full native packaging are deferred.
+
+### Original remaining-work list (historical; not the next MVP backlog)
 
 1. **On-device acceptance of the new Home and sync feedback.** The exact image below was written to the application partition and its device hash verified on 2026-09-24. Inspect badge, all three tomato values, focus control, settings feedback, wake and navigation. Then pair to a reachable local service and verify that a saved portal badge appears after manual sync. The device display and complete sync path still await user confirmation.
 2. **Make onboarding a cohesive flow.** Add clear connect/pairing/error/retry states to the device-hosted page and a transition to the service portal when the phone can reach it. Keep the current manual Settings path. Test wrong Wi-Fi, unreachable service, expired code, reconnection, and no captive popup.

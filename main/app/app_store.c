@@ -24,15 +24,8 @@ static nvs_handle_t s_nvs;
 void app_store_init(void) {
     if (s_nvs) return;
     esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        // 两种来源:分区布局变更后的首次启动;或复位恰好撕断 NVS 写入致分区
-        // 损坏(真机见过:USB 总线复位打断经验落盘)。后者意味着全部持久化
-        // 数据就此丢失,必须留下响亮痕迹供事后归因。
-        ESP_LOGE(TAG, "NVS 重新格式化,经验/番茄/设置全部丢失: %s",
-                 esp_err_to_name(err));
-        err = nvs_flash_erase();
-        if (err == ESP_OK) err = nvs_flash_init();
-    }
+    // Preserve XP/settings and BLE bonds on full/incompatible NVS. Recovery
+    // requires an explicit data decision; transport migration never erases it.
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS 初始化失败: %s(降级为内存态)", esp_err_to_name(err));
         return;

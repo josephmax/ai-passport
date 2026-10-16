@@ -15,9 +15,10 @@ idf_component_register(
          "app/app_runtime.c"
          "app/app_service.c"
          "app/app_power.c"
-         "app/app_net.c"
-         "app/app_sync.c"
-         "app/app_prov.c"
+         "app/app_ble.c"
+         "app/app_ble_startup.c"
+         "app/app_ble_protocol.c"
+         "app/app_ble_trust.c"
          "app/app_debug.c"
          "app/app_audio_fx.c"
          "ui/ui_theme.c"
@@ -25,11 +26,12 @@ idf_component_register(
          "ui/ui_pet.c"
          "ui/ui_settings.c"
          "ui/ui_shell.c"
+         "ui/ui_event_batch.c"
          "fonts/app_font_12.c"
          "fonts/app_font_24.c"
     INCLUDE_DIRS "." "app" "ui"
-    REQUIRES bsp nvs_flash esp_timer esp_event esp_netif esp_wifi
-    PRIV_REQUIRES json joltwallet__littlefs esp_http_server esp_http_client
+    REQUIRES bsp nvs_flash esp_timer esp_event bt
+    PRIV_REQUIRES json joltwallet__littlefs
     EMBED_FILES "assets_default/pendant_default_bundle.bin"
                 "assets_default/pendant_victory.pcm"
                 "assets_default/pendant_beep.pcm"

@@ -3,7 +3,7 @@
 
 #include "app_debug.h"
 #include "app_focus.h"
-#include "app_prov.h"
+#include "app_ble.h"
 #include "app_runtime.h"
 #include "app_service.h"
 #include "bsp_audio.h"
@@ -160,6 +160,14 @@ static void power_task(void *arg) {
         int64_t idle_ms = now - s_last_activity_ms;
         uint32_t auto_off_ms = (uint32_t)rt->settings.auto_off_s * 1000U;
 
+        // A BLE connection/capture cannot survive the old manual sleep path.
+        app_ble_status_t ble = app_ble_status();
+        if (ble.pairing_open || ble.confirm || rt->mic_requested || rt->mic_active) {
+            if (rt->mic_active || ble.confirm) app_power_wake_screen();
+            continue;
+        }
+        if (ble.connected && s_screen_off) continue;
+
         if (!s_screen_off) {
             if (idle_ms >= auto_off_ms) {
                 s_screen_off = true;
@@ -170,12 +178,6 @@ static void power_task(void *arg) {
         }
 
         // ---- 熄屏后的路径 ----
-        // 配网热点需要常开:等待手机提交表单期间不睡眠。
-        if (app_prov_state() != APP_PROV_IDLE) {
-            static bool logged;
-            if (!logged) { ESP_LOGI(TAG, "配网进行中,暂不睡眠"); logged = true; }
-            continue;
-        }
         if (rt->focus.running) {
             int64_t boundary = app_focus_next_boundary_ms(&rt->focus, now);
             int64_t slice = boundary < 0 ? LIGHT_SLICE_MAX_MS : boundary;
@@ -233,6 +235,9 @@ bool app_power_init(void) {
     };
     gpio_config(&io);
     if (xTaskCreate(power_task, "power", 3072, NULL, 3, &s_task) != pdPASS) {
+        ESP_LOGE(TAG, "power task allocation failed: internal free=%u largest=%u",
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
         return false;
     }
     return true;

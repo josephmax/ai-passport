@@ -3,25 +3,39 @@
 # Multi-Pendant Application Development Specification
 
 - Date: 2026-09-22
-- Status: requirements confirmed, pending implementation
+- Status: existing application partially implemented; BLE firmware/macOS helper implemented; device acceptance pending
 - 2026-09-24: §3 (pages and navigation) and §7.1 (settings interaction model) are superseded by the [Home Panel Redesign specification](./2026-09-24-home-panel-redesign.md); the remaining sections stay in force, and the new specification wins on conflict
+- 2026-10-14: the [BLE companion MVP](2026-10-14-ble-companion-mvp.md) replaces device networking, phone onboarding, hourly HTTP delivery, and the local-ASR proposal. This revision updates the target; firmware now uses BLE; hardware acceptance remains pending. Reversal records: [ADR 0006](../adr/0006-ble-companion-without-device-networking.md), [ADR 0007](../adr/0007-microphone-bridge-reuses-desktop-dictation.md).
 - Terminology: see [`docs/CONTEXT.md`](../CONTEXT.md); key decisions in [`docs/adr/`](../adr/)
 - Target: FoloToy AI Passport (ESP32-C3, 8 MB Flash, no PSRAM, 240×320 ST7789P3, UP/DOWN/OK three buttons, ES8311 audio, no vibration motor)
 
 ## 1. Overview
 
-One firmware with three top pages: **Dashboard** (Coding account quota
-monitoring), **Pet** (a pet-skinned Pomodoro with XP, levels, and weather),
-and **Settings**. Alongside it a **local service** running on the user's own
-machine: collects per-account usage (reusing open source tooling), hosts the
-web config portal, transcodes and distributes pet assets, and relays weather.
-Once on the network the device pulls a snapshot from the local service once
-per hour.
+One firmware with a single Home and second-level usage/settings views, a pet-skinned focus timer with XP/weather, and an explicit microphone mode. A local service retains collection, configuration, asset transcoding, and weather. A nearby computer companion exchanges snapshots and microphone audio with the device over BLE. The pendant does not join a network; the computer keeps its own internet connection. The microphone becomes a desktop audio input, with recognition/cleanup/insertion handled by the user's existing Typeless application.
 
 Product north star: **"a living pendant"** — the pet is the personified
 shell, data is its mood source, the Pomodoro is its daily life.
 
 ## 2. System architecture
+
+### 2.1 BLE architecture (implemented 2026-10-15; hardware acceptance pending)
+
+```text
+Host browser -> local service (collectors, snapshot, settings, PNG/APB1)
+                     | authenticated loopback access
+                     v
+                Mac companion <--- BLE ADPCM/status --- pendant
+                     |         --- BLE snapshot/time -> pendant
+                     v
+             virtual microphone -> Typeless -> active text field
+                                      | cloud recognition/cleanup
+```
+
+Provider credentials remain on the host. The device persists computer binding, local settings, focus/XP, last snapshot, and current assets; no Wi-Fi credentials or service address are required by the new flow. BLE pairing and stream details, migration preservation, and M0–M3 gates are authoritative in the [BLE companion specification](2026-10-14-ble-companion-mvp.md). BLE asset transfer is later work; current assets remain usable.
+
+### 2.2 Original network architecture (superseded; retained for history)
+
+The diagram and network credentials below record the original design. Its HTTPS label was aspirational; the superseded firmware used plain LAN HTTP. Do not implement this onboarding for the next MVP.
 
 ```
 ┌─ Phone browser ── Config Portal (Web, hosted by local service)
@@ -75,7 +89,7 @@ Four compact summary cards, with the first three fed by the **primary account**
 4. **Agents**: number of local Agent sources with a separate log reading
 
 The selected card is highlighted; OK drills in. Top status bar: sync time
-(`x min ago`), Wi-Fi icon, battery.
+(`x min ago`), computer/BLE connection state, battery. Collector freshness and connection state are separate.
 
 ### 4.2 Drill-down pages
 
@@ -114,7 +128,7 @@ long-press returns to the cards.
     "sunrise": "06:12", "sunset": "18:05",
     "city": "Shanghai"
   },
-  "assetBundle": { "version": 3 }     // newer → device fetches the asset bundle
+  "assetBundle": { "version": 3 }     // later asset capability; MVP keeps installed assets
 }
 ```
 
@@ -204,11 +218,15 @@ All persisted in NVS.
 | Item | Form |
 | --- | --- |
 | Brightness | 5-step cycle (LEDC PWM) |
-| Wi-Fi | enter provisioning (SoftAP: device AP + phone browser form for SSID/password + service address) |
+| Connect computer | enter time-limited authenticated BLE binding; show connection/retry status |
 | Screen off | 15 s / 30 s / 1 min / 2 min |
 | Rest time | start/end each adjustable ±30 min |
-| Connect phone | QR code of the service address + current token status |
+| Forget computer | confirm removal of the computer association, preserving local data |
 | Volume | 0–5 steps (victory sound / beeps) |
+| Microphone | enter explicit stream mode; OK start/stop, long OK stops and returns |
+| Sync now | request latest host snapshot; report disconnected, queued, success/failure and data age |
+
+This is the next target, not the current Wi-Fi/phone list. The [BLE specification](2026-10-14-ble-companion-mvp.md) replaces those entries and requires a layout/font check for the expanded list.
 
 
 ### 7.1 Settings interaction model (clarified)
@@ -224,25 +242,21 @@ stays unambiguous:
   entered by selecting the item. UP/DOWN changes the value (applied
   live); OK confirms and returns to the list; long-press cancels and
   reverts to the value at entry.
-- **Flow screens** (networking and multi-field items: rest window,
-  connect-phone, provisioning): selecting opens the next screen with
+- **Flow screens** (binding, microphone, and multi-field rest window): selecting opens the next screen with
   its own local keys (shown in the bottom hint bar); long-press walks
   back one level.
 - "Sync now" is an immediate action: OK runs it and stays in the list.
 
 ## 8. Device ↔ service protocol
 
-- Sync: once immediately after Wi-Fi connects, then hourly; manual trigger
-  ("sync now" in settings)
-- Pull: `GET /api/snapshot`, header `X-Device-Token`; the response is the §4.3 snapshot
-- Assets: when `assetBundle.version` exceeds the local one,
-  `GET /assets/bundle_v{N}.bin` (manifest + frame data packed in order),
-  streamed in chunks into LittleFS, atomic switch on completion, old version
-  cleaned up later
-- Time: the device calibrates against the response's fresh `servedAt`, while
-  `generatedAt` remains the cached reading's timestamp. Rest windows and
-  today/week resets depend on this clock; a missing `servedAt` is accepted for
-  older servers.
+- Next transport: one authenticated BLE GATT connection, with versioned control, snapshot, and audio messages; no device HTTP endpoint requests or IP configuration.
+- Sync: push after binding/reconnect, successful host refresh, or configuration changes; manual "sync now" asks the companion for delivery. Host collection remains independently scheduled, rather than waiting for an hourly device pull.
+- Payload: preserve the §4.3 snapshot and 4096-byte cap; complete, validate, and acknowledge before applying. Preserve last valid data on partial delivery and distinguish stale data from a disconnected link.
+- Time: generate fresh `servedAt` on host delivery and preserve `generatedAt` as reading time. Keep existing older-snapshot parsing compatibility.
+- Audio: device-to-host PCM notifications in explicit microphone mode; control/stop first, audio next, coalesce snapshots and defer their persistent application until capture stops.
+- Assets: keep installed/built-in assets in the MVP. Later APB1 transfer uses BLE chunks and verified atomic LittleFS installation, not the old HTTP download. An unsupported bundle update must not block snapshots.
+
+The original `POST /api/pair`, `GET /api/snapshot`, and `/assets/*` device requests remain in the current legacy implementation. They are historical transport contracts, not the next target. Full message semantics and acceptance are in the [BLE companion specification](2026-10-14-ble-companion-mvp.md).
 
 ## 9. Local service components
 
@@ -252,7 +266,8 @@ stays unambiguous:
 | GLM/DeepSeek collectors | balance/usage | official API + key (stored server-side) |
 | ChatGPT collector | no official subscription API | **P2, under research** |
 | Snapshot aggregation | normalize into the §4.3 schema | scheduled refresh + on demand |
-| Config portal web | account link / primary / city / token budget / asset upload | LAN + password, see the [config portal spec](./2026-09-22-config-portal.md) |
+| Config portal web | account link / primary / city / token budget / asset upload | host loopback + existing password session; see the [config portal spec](./2026-09-22-config-portal.md) |
+| Mac companion | BLE binding/snapshot exchange and PCM-to-virtual-input bridge | native helper, CoreBluetooth + Core Audio; no ASR model |
 | Asset pipeline | PNG→RGB565 frame packs + manifest, size validation | server-side sharp / custom transcode |
 | Weather | open-meteo (no key, includes sunrise/sunset) | 30-minute cache |
 
@@ -262,7 +277,8 @@ stays unambiguous:
 | --- | --- | --- | --- |
 | Firmware framework | ESP-IDF 5.5.3 + repo BSP | established | Arduino compat layer |
 | UI | LVGL (BSP-integrated) | established; build/destroy screens on switch to bound memory | — |
-| HTTP/TLS | esp_http_client + esp-tls (mbedTLS) | native, few credentials | — |
+| Device transport | NimBLE authenticated GATT | office-network independence; one data/audio connection | mandatory Wi-Fi, SoftAP, NAT traversal |
+| Desktop audio | native Mac helper + independently installed BlackHole 2ch | reuse a system microphone interface | custom driver/ASR/input method in MVP |
 | JSON | cJSON | IDF-bundled, streamable, bounded memory | jsmn (too low-level) |
 | Asset storage | LittleFS (`esp_littlefs`) | power-loss safe, file semantics | FATFS (wear, size) |
 | State persistence | NVS | established | — |
@@ -276,14 +292,11 @@ stays unambiguous:
 
 ## 11. Memory and power budget (red lines)
 
-- TLS handshake peaks at ~40–50 KB heap: **never overlap the sync task with
-  audio playback**; pause frame-asset loading during sync
-- LVGL: destroy the old screen before building the new one on page switches;
-  the pet page is resident but with a fixed, small widget count
-- Asset download: 4 KB chunks streamed into LittleFS, never the whole bundle
-  in RAM
-- Light sleep (while timing): hundreds of µA; deep sleep (idle): µA-level,
-  button wakeup
+- The next target has no device Wi-Fi/TLS stack. Current firmware's BLE-disabled setting must change; measure the resulting heap, DMA, largest block, and stacks rather than adding historical Wi-Fi/BLE estimates.
+- The LVGL pool is 48 KiB after the 2026-10-16 BLE startup repair; Home stays resident. The native render stress run peaked at 36.5 KiB. This is not an ESP32 heap/stack measurement; see the [startup repair checkpoint](2026-10-14-ble-companion-mvp.md#10-startup-failure-and-repair-2026-10-16). Do not import the older voice report's 24 KiB estimate as a current fact.
+- Audio uses bounded streaming queues, initially targeting at most 16 KiB device PCM storage; no full utterance or recording file. Freeze animation and defer snapshot persistence/assets during capture.
+- Give capture exclusive codec ownership; stop/acknowledge effects before capture, and inhibit automatic sleep while streaming. Focus/XP continue; victory audio/navigation wait until capture stops.
+- Later assets are bounded writes, never a whole bundle in RAM. Keep existing power-state invariants outside active microphone mode. Board sleep/streaming currents and endurance require measurement; chip-level µA figures are not product promises.
 
 ## 12. Testing and acceptance
 
@@ -295,12 +308,16 @@ hysteresis, snapshot parsing and offline tagging.
 Device acceptance (before P1 ships, item by item): three-page navigation and
 the full key map; drill-down and back; 25/50/125-minute blocks surviving
 screen-off, on-time page jump + sound; rest-window sleep/wake behavior; the
-12 weather×time combinations eyeballed; the full SoftAP provisioning flow; a
+12 weather×time combinations eyeballed; authenticated BLE binding/reconnect without provisioning; a
 24-hour offline snapshot tag; asset bundle v1→v2 hot update; overnight deep
 sleep drain; spot checks of the level curve (forge XP in NVS to verify
-display).
+display). Asset transfer acceptance applies to the later BLE asset increment, not the first MVP. Add all M0–M3 gates in the [BLE specification](2026-10-14-ble-companion-mvp.md), including virtual microphone, no-network sync, overflow/stop/reconnect, and measured audio quality/memory/power. Historical firmware acceptance is not evidence for this new transport.
 
 ## 13. Milestones
+
+Current next delivery: **M0 desktop virtual-microphone compatibility → M1 BLE data/binding → M2 BLE microphone → M3 combined acceptance**, defined in the [BLE MVP](2026-10-14-ble-companion-mvp.md). Large-asset transfer, phone/NFC onboarding, multi-device support, remote shortcuts, and local recognition are deferred.
+
+### Original P1–P3 roadmap (superseded where it requires networking)
 
 - **P1 (wearable daily)**: shell+navigation, dashboard (local service +
   Claude/GLM/DeepSeek collectors), pet with three actions + placeholder AI

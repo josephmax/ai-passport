@@ -204,9 +204,10 @@ LICENSE                  仓库许可证
 | [硬件资料](hardware-design/README.zh_CN.md) | 板卡事实、接口边界、验收清单与排障 |
 | [中文字体](development/engineering/lvgl-chinese-fonts.zh_CN.md) | 字形覆盖、控件字体选择，以及中文空白排查 |
 | [Wi-Fi 配网](development/engineering/wifi-provisioning.zh_CN.md) | 蓝牙配网实现参考与配套小程序 |
-| [工牌应用交接](specs/2026-09-24-badge-onboarding.zh_CN.md) | 名牌／配置中心现行设计、已实现范围、待做 NFC 接入与构建状态 |
+| [BLE 伴侣 MVP](specs/2026-10-14-ble-companion-mvp.zh_CN.md) | 已实现 BLE 数据／音频、多电脑身份、回退与待完成的实机验收；[传输决策](adr/0006-ble-companion-without-device-networking.zh_CN.md)、[麦克风边界](adr/0007-microphone-bridge-reuses-desktop-dictation.zh_CN.md) |
+| [工牌应用交接](specs/2026-09-24-badge-onboarding.zh_CN.md) | BLE 接入替代、旧名牌／配置中心实现、已取代的 NFC 计划及历史构建状态 |
 | [用量采集](development/engineering/usage-collection.zh_CN.md) | Token 日志、订阅采样、金额读数与覆盖范围；[架构决策](adr/0005-separate-usage-quota-and-billing.zh_CN.md) |
-| [语音输入可行性](specs/2026-09-26-voice-input-feasibility.zh_CN.md) | 跨平台麦克风／输入伴随程序、开源选项、资源预算及待验收项 |
+| [语音输入可行性](specs/2026-09-26-voice-input-feasibility.zh_CN.md) | BLE 虚拟麦克风／Typeless 集成、云端／订阅边界、已取代的本地 ASR 提案 |
 | [社区作品与经验](reference/README.zh_CN.md) | `docs/reference/<username>/` 下的应用档案和可复用知识 |
 | [参与贡献](contribution/README.zh_CN.md) | 文档、提交与 Pull Request 约定 |
 | [品牌素材](brand/README.zh_CN.md) | 产品视觉参考与[品牌说明](brand/brand-and-product.zh_CN.md) |

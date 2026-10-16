@@ -25,6 +25,28 @@ run_static_checks() {
 
     test_dir="$(mktemp -d /tmp/ai-passport-host-tests.XXXXXX)"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_app_ble.c main/app/app_ble_protocol.c main/app/app_ble_trust.c \
+        -o "${test_dir}/test_app_ble"
+    "${test_dir}/test_app_ble" "${test_dir}/audio.fixture"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain -Itests/ble_startup_stubs \
+        tests/test_app_ble_startup.c main/app/app_ble_startup.c \
+        -o "${test_dir}/test_app_ble_startup"
+    "${test_dir}/test_app_ble_startup"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_ui_event_batch.c main/ui/ui_event_batch.c \
+        -o "${test_dir}/test_ui_event_batch"
+    "${test_dir}/test_ui_event_batch"
+    if [[ "$(uname -s)" == Darwin ]]; then
+        swiftc -swift-version 5 -module-cache-path "${test_dir}/swift-cache" \
+            companion/macos/Protocol.swift companion/macos/ProtocolTests.swift \
+            -o "${test_dir}/test_companion_protocol"
+        "${test_dir}/test_companion_protocol" "${test_dir}/audio.fixture"
+        swiftc -swift-version 5 -module-cache-path "${test_dir}/swift-cache" \
+            companion/macos/Protocol.swift companion/macos/DesktopStore.swift companion/macos/DesktopStoreTests.swift \
+            -o "${test_dir}/test_companion_desktop"
+        "${test_dir}/test_companion_desktop"
+    fi
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
         tests/test_ui_pixel_math.c main/ui_pixel_math.c \
         -o "${test_dir}/test_ui_pixel_math"
     "${test_dir}/test_ui_pixel_math"

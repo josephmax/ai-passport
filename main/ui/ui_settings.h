@@ -4,7 +4,7 @@
 
 typedef struct { lv_obj_t *screen; } ui_settings_t;
 typedef struct {
-    bool save, cancel_provisioning;
+    bool save;
     app_settings_t settings;
 } ui_settings_work_t;
 ui_settings_t *ui_settings_create(void);

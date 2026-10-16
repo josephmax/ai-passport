@@ -210,9 +210,10 @@ provide reference material. Choose the entry that matches your task.
 | [Hardware](hardware-design/README.md) | Board facts, interface boundaries, acceptance checklists, and troubleshooting |
 | [Chinese fonts](development/engineering/lvgl-chinese-fonts.md) | Glyph coverage, widget font selection, and blank-text troubleshooting |
 | [Wi-Fi provisioning](development/engineering/wifi-provisioning.md) | Bluetooth provisioning reference and companion mini program |
-| [Badge app handoff](specs/2026-09-24-badge-onboarding.md) | Current badge/portal design, implemented behavior, pending NFC onboarding, and verified build status |
+| [BLE companion MVP](specs/2026-10-14-ble-companion-mvp.md) | Implemented BLE data/audio, multi-host identity, rollback and pending hardware acceptance; [transport decision](adr/0006-ble-companion-without-device-networking.md), [microphone boundary](adr/0007-microphone-bridge-reuses-desktop-dictation.md) |
+| [Badge app handoff](specs/2026-09-24-badge-onboarding.md) | BLE onboarding replacement, legacy badge/portal implementation, superseded NFC plan, and historical build status |
 | [Usage collection](development/engineering/usage-collection.md) | Token logs, subscription samples, monetary readings, and source coverage; [architecture decision](adr/0005-separate-usage-quota-and-billing.md) |
-| [Voice input feasibility](specs/2026-09-26-voice-input-feasibility.md) | Cross-platform microphone/input companion, open-source options, resource budget, and pending acceptance |
+| [Voice input feasibility](specs/2026-09-26-voice-input-feasibility.md) | BLE virtual-microphone/Typeless integration, cloud/subscription boundary, and superseded local-ASR proposal |
 | [Community projects and experience](reference/README.md) | Playbooks and reusable knowledge under `docs/reference/<username>/` |
 | [Contributing](contribution/README.md) | Documentation, commits, and pull-request conventions |
 | [Brand assets](brand/README.md) | Product visual references and [brand language](brand/brand-and-product.md) |

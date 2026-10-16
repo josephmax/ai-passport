@@ -13,6 +13,7 @@ static app_snapshot_t s_snap_buf[2];
 static app_snapshot_t *volatile s_snap_active = &s_snap_buf[0];
 
 void app_runtime_set_snapshot(const app_snapshot_t *snap) {
+    if (!snap) { memset(s_snap_buf, 0, sizeof(s_snap_buf)); return; }
     app_snapshot_t *next =
         s_snap_active == &s_snap_buf[0] ? &s_snap_buf[1] : &s_snap_buf[0];
     *next = *snap;

@@ -2,6 +2,9 @@
 #include "app_audio_fx.h"
 
 #include "app_debug.h"
+#include "app_ble.h"
+#include "app_ble_protocol.h"
+#include "esp_random.h"
 #include "app_runtime.h"
 #include "bsp_audio.h"
 #include "esp_log.h"
@@ -26,6 +29,42 @@ extern const uint8_t pendant_beep_pcm_end[] asm("_binary_pendant_beep_pcm_end");
 static QueueHandle_t s_queue;
 static TaskHandle_t s_task;
 static volatile bool s_stop;
+static volatile bool s_mic;
+
+static void capture(void) {
+    app_runtime_t *rt = app_runtime();
+    int16_t pcm[APP_BLE_AUDIO_SAMPLES];
+    uint8_t packet[APP_BLE_AUDIO_BYTES];
+    uint32_t stream = esp_random(), seq = 0;
+    rt->mic_error[0] = 0;
+    if (bsp_audio_wake() != ESP_OK || bsp_audio_set_format(16000, 16, 1) != ESP_OK) {
+        strlcpy(rt->mic_error, "Audio hardware failed", sizeof(rt->mic_error));
+        goto done;
+    }
+    bsp_audio_set_volume(0);
+    rt->mic_active = true;
+    app_runtime_publish(APP_EVENT_BLE_STATE);
+    while (s_mic) {
+        if (bsp_audio_read(pcm, sizeof(pcm)) != ESP_OK) {
+            strlcpy(rt->mic_error, "Microphone read failed", sizeof(rt->mic_error)); break;
+        }
+        if (!s_mic) break;
+        unsigned peak = 0;
+        for (unsigned i = 0; i < APP_BLE_AUDIO_SAMPLES; ++i) {
+            unsigned amplitude = pcm[i] < 0 ? -(int)pcm[i] : pcm[i];
+            if (amplitude > peak) peak = amplitude;
+        }
+        rt->mic_level = (uint8_t)(peak * 100 / 32768);
+        app_ble_audio_encode(pcm, stream, seq++, packet);
+        if (!app_ble_audio_send(packet, sizeof(packet))) {
+            strlcpy(rt->mic_error, "BLE audio interrupted", sizeof(rt->mic_error)); break;
+        }
+    }
+done:
+    (void)bsp_audio_sleep();
+    s_mic = false; rt->mic_active = false; rt->mic_requested = false; rt->mic_level = 0;
+    app_runtime_publish(APP_EVENT_BLE_STATE);
+}
 
 // 档位 0..5 → 输出百分比;0 档静音但流程照走(时序不变,好测试)。
 static const uint16_t VOLUME_PERCENT[6] = { 0, 12, 25, 40, 60, 85 };
@@ -56,6 +95,8 @@ static void fx_task(void *arg) {
     app_fx_t fx;
     for (;;) {
         if (xQueueReceive(s_queue, &fx, portMAX_DELAY) != pdTRUE) continue;
+        if (s_mic) { capture(); continue; }
+        if (fx == (app_fx_t)2) continue;
         // 同步期间不播(规格 §11:TLS 握手峰值不与音频叠加)。
         if (app_runtime()->sync_in_progress) continue;
 
@@ -95,7 +136,7 @@ bool app_audio_fx_init(void) {
 }
 
 void app_audio_fx_play(app_fx_t fx) {
-    if (!s_queue) return;
+    if (!s_queue || s_mic || app_runtime()->mic_requested) return;
     s_stop = false;
     xQueueReset(s_queue);          // 后到覆盖先到
     ESP_LOGI(TAG, "音效入队 fx=%d (同步中=%d)", (int)fx,
@@ -105,4 +146,26 @@ void app_audio_fx_play(app_fx_t fx) {
 
 void app_audio_fx_stop(void) {
     s_stop = true;
+}
+
+void app_audio_microphone(bool enabled) {
+    if (!s_queue) return;
+    if (enabled && app_runtime()->mic_active) return;
+    if (enabled) {
+        app_ble_status_t ble = app_ble_status();
+        if (!ble.ready || !ble.audio_subscribed) {
+            strlcpy(app_runtime()->mic_error, "Connect Mac audio first", sizeof(app_runtime()->mic_error));
+            return;
+        }
+    }
+    s_mic = enabled;
+    app_runtime()->mic_requested = enabled;
+    s_stop = true;
+    if (enabled) {
+        app_fx_t wake = (app_fx_t)2;
+        xQueueReset(s_queue);
+        if (xQueueSend(s_queue, &wake, 0) != pdTRUE) {
+            s_mic = false; app_runtime()->mic_requested = false;
+        }
+    }
 }
